@@ -210,7 +210,7 @@ mod tests {
     fn test_cache_padded() {
         let padded = util::CachePadded::new(42);
         assert_eq!(*padded.get(), 42);
-        
+
         let mut padded = padded;
         *padded.get_mut() = 100;
         assert_eq!(padded.into_inner(), 100);
@@ -218,8 +218,14 @@ mod tests {
 
     #[test]
     fn test_error_display() {
-        assert_eq!(Error::WouldBlock.to_string().trim(), "Operation would block");
+        assert_eq!(
+            Error::WouldBlock.to_string().trim(),
+            "Operation would block"
+        );
         assert_eq!(Error::Closed.to_string().trim(), "Data structure is closed");
-        assert_eq!(Error::InvalidState.to_string().trim(), "Invalid operation for current state");
+        assert_eq!(
+            Error::InvalidState.to_string().trim(),
+            "Invalid operation for current state"
+        );
     }
 }

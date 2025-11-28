@@ -22,7 +22,7 @@ impl<T> MpmcQueue<T> {
     /// Create a new MPMC queue with the specified capacity
     pub fn new(capacity: usize) -> Self {
         assert!(capacity > 0, "Capacity must be greater than 0");
-        
+
         Self {
             buffer: Arc::new(Mutex::new((0..capacity).map(|_| None).collect())),
             capacity,
@@ -36,42 +36,42 @@ impl<T> MpmcQueue<T> {
     /// Push a value into the queue
     pub fn push(&self, value: T) -> Result<(), crate::Error> {
         let _guard = self.push_lock.lock().unwrap();
-        
+
         let tail = self.tail.get().load(Ordering::Relaxed);
         let head = self.head.get().load(Ordering::Relaxed);
-        
+
         if tail - head >= self.capacity {
             return Err(crate::Error::WouldBlock);
         }
-        
+
         let index = tail % self.capacity;
         {
             let mut buffer = self.buffer.lock().unwrap();
             buffer[index] = Some(value);
         }
         self.tail.get().store(tail + 1, Ordering::Release);
-        
+
         Ok(())
     }
 
     /// Pop a value from the queue
     pub fn pop(&self) -> Option<T> {
         let _guard = self.pop_lock.lock().unwrap();
-        
+
         let head = self.head.get().load(Ordering::Relaxed);
         let tail = self.tail.get().load(Ordering::Relaxed);
-        
+
         if head == tail {
             return None;
         }
-        
+
         let index = head % self.capacity;
         let value = {
             let mut buffer = self.buffer.lock().unwrap();
             buffer[index].take()
         };
         self.head.get().store(head + 1, Ordering::Release);
-        
+
         value
     }
 
@@ -136,25 +136,25 @@ mod tests {
     #[test]
     fn test_basic_operations() {
         let queue: MpmcQueue<i32> = MpmcQueue::new(3);
-        
+
         assert!(queue.is_empty());
         assert_eq!(queue.len(), 0);
         assert_eq!(queue.pop(), None);
-        
+
         queue.push(1).unwrap();
         queue.push(2).unwrap();
         queue.push(3).unwrap();
-        
+
         assert_eq!(queue.len(), 3);
         assert!(!queue.is_empty());
-        
+
         assert_eq!(queue.push(4), Err(crate::Error::WouldBlock));
-        
+
         assert_eq!(queue.pop(), Some(1));
         assert_eq!(queue.pop(), Some(2));
         assert_eq!(queue.pop(), Some(3));
         assert_eq!(queue.pop(), None);
-        
+
         assert!(queue.is_empty());
         assert_eq!(queue.len(), 0);
     }
