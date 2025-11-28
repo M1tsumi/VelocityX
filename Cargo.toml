@@ -1,0 +1,59 @@
+[package]
+name = "velocityx"
+version = "0.1.0"
+edition = "2021"
+authors = ["VelocityX Contributors"]
+description = "A production-ready Rust crate for lock-free concurrent data structures"
+documentation = "https://docs.rs/velocityx"
+repository = "https://github.com/velocityx/velocityx"
+homepage = "https://velocityx.rs"
+readme = "README.md"
+keywords = ["concurrent", "lock-free", "data-structures", "mpmc", "queue"]
+categories = ["concurrency", "data-structures", "algorithms"]
+license = "MIT OR Apache-2.0"
+rust-version = "1.65"
+
+[features]
+default = ["std"]
+std = []
+
+[dependencies]
+crossbeam-utils = "0.8"
+crossbeam-epoch = "0.9"
+crossbeam-deque = "0.8"
+parking_lot = "0.12"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+proptest = "1.0"
+rand = "0.8"
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# For loom testing (optional)
+loom = { version = "0.7", optional = true }
+
+[[bench]]
+name = "performance"
+harness = false
+
+[[bench]]
+name = "mpmc_queue_benchmarks"
+harness = false
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.bench]
+debug = true
+lto = true
+codegen-units = 1
+
+[workspace]
+members = [
+    ".",
+    "benches",
+]

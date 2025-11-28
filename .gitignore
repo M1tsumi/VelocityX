@@ -1,0 +1,106 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.bak
+*.tmp
+*.orig
+
+# Debug
+debug/
+target/
+
+# Profiling
+*.profraw
+*.prof
+
+# Documentation (generated)
+/book/
+/docs/target/
+/target/doc/
+
+# Test output
+tests/output/
+
+# Benchmarks
+benches/target/
+
+# Local development
+.env
+.local/
+
+# Rust analyzer
+/rust-analyzer/
+
+# Coverage reports
+coverage/
+tarpaulin-report.html
+*.lcov
+
+# Performance profiling
+flamegraph.svg
+perf.data*
+
+# Security audit reports
+audit-report.json
+
+# Dependency reports
+dependency-graph.svg
+advisory-db/
+
+# Local scripts output
+scripts/output/
+scripts/logs/
+
+# Temporary files from scripts
+scripts/*.log
+scripts/*.tmp
+
+# Documentation build artifacts
+docs/build/
+docs/public/
+docs/.vite/
+docs/dist/
+
+# Website generation
+website/
+site/
+public/
+
+# Local configuration files
+scripts/config.local.*
+.env.local
+*.local.*
+
+# Exclude scripts from website (they're for development)
+scripts/
+!scripts/README.md
+
+# Exclude source docs from website (use processed versions)
+VelocityXDocs.md
+PROJECT_ROADMAP.md
+CONTRIBUTING.md
+SECURITY.md
+CHANGELOG.md
+PUBLISHING_GUIDE.md
+CLippy.toml
+rustfmt.toml
+.cargo-deny.toml
+
+# Keep website-specific docs
+docs/
+!docs/README.md
+!docs/website.md
