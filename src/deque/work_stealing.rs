@@ -188,9 +188,9 @@ impl<T> WorkStealingDeque<T> {
             buffer: CachePadded::new(buffer),
             capacity,
             mask,
-            bottom: CachePadded::new(AtomicIsize::new(0)),
-            top: CachePadded::new(AtomicIsize::new(0)),
-            epoch: CachePadded::new(AtomicUsize::new(0)),
+            bottom: CachePadded::new(std::sync::atomic::AtomicIsize::new(0)),
+            top: CachePadded::new(std::sync::atomic::AtomicIsize::new(0)),
+            epoch: CachePadded::new(std::sync::atomic::AtomicUsize::new(0)),
         }
     }
 
@@ -223,8 +223,8 @@ impl<T> WorkStealingDeque<T> {
     /// ```
     #[inline]
     pub fn push(&self, value: T) -> Result<()> {
-        let bottom = self.bottom.load(Ordering::Relaxed);
-        let top = self.top.load(Ordering::Acquire);
+        let bottom = self.bottom.get().load(Ordering::Relaxed);
+        let top = self.top.get().load(Ordering::Acquire);
         
         // Check if deque is full
         if bottom - top >= self.capacity as isize {
@@ -237,7 +237,7 @@ impl<T> WorkStealingDeque<T> {
         self.buffer[index] = Some(value);
         
         // Update bottom index with Release ordering
-        self.bottom.store(bottom + 1, Ordering::Release);
+        self.bottom.get().store(bottom + 1, Ordering::Release);
         
         Ok(())
     }
@@ -268,16 +268,16 @@ impl<T> WorkStealingDeque<T> {
     /// ```
     #[inline]
     pub fn pop(&self) -> Option<T> {
-        let bottom = self.bottom.load(Ordering::Relaxed);
+        let bottom = self.bottom.get().load(Ordering::Relaxed);
         
-        if bottom <= 0 {
+        if bottom == 0 {
             return None;
         }
         
         // Decrement bottom first
-        self.bottom.store(bottom - 1, Ordering::Relaxed);
+        self.bottom.get().store(bottom - 1, Ordering::Relaxed);
         
-        let top = self.top.load(Ordering::Acquire);
+        let top = self.top.get().load(Ordering::Acquire);
         
         if top <= bottom - 1 {
             // Deque is not empty, take the element
@@ -286,18 +286,18 @@ impl<T> WorkStealingDeque<T> {
             
             if top == bottom - 1 {
                 // Deque became empty, try to update top
-                if self.top.compare_exchange(
+                if self.top.get().compare_exchange(
                     top,
                     top + 1,
                     Ordering::Release,
                     Ordering::Relaxed,
                 ).is_ok() {
                     // Successfully updated top, return value
-                    self.bottom.store(top + 1, Ordering::Relaxed);
+                    self.bottom.get().store(bottom, Ordering::Relaxed);
                     return value;
                 } else {
                     // Another thread stole the element, restore bottom
-                    self.bottom.store(top, Ordering::Relaxed);
+                    self.bottom.get().store(bottom, Ordering::Relaxed);
                     return None;
                 }
             }
@@ -305,7 +305,7 @@ impl<T> WorkStealingDeque<T> {
             value
         } else {
             // Deque is empty, restore bottom
-            self.bottom.store(top, Ordering::Relaxed);
+            self.bottom.get().store(bottom, Ordering::Relaxed);
             None
         }
     }
@@ -336,8 +336,8 @@ impl<T> WorkStealingDeque<T> {
     /// ```
     #[inline]
     pub fn steal(&self) -> Option<T> {
-        let top = self.top.load(Ordering::Acquire);
-        let bottom = self.bottom.load(Ordering::Acquire);
+        let top = self.top.get().load(Ordering::Acquire);
+        let bottom = self.bottom.get().load(Ordering::Acquire);
         
         if top >= bottom {
             return None;
@@ -348,7 +348,7 @@ impl<T> WorkStealingDeque<T> {
         // Try to take the element
         if let Some(value) = self.buffer[index].take() {
             // Try to update top
-            if self.top.compare_exchange(
+            if self.top.get().compare_exchange(
                 top,
                 top + 1,
                 Ordering::Release,
@@ -388,8 +388,8 @@ impl<T> WorkStealingDeque<T> {
     /// ```
     #[inline]
     pub fn len(&self) -> usize {
-        let bottom = self.bottom.load(Ordering::Acquire);
-        let top = self.top.load(Ordering::Acquire);
+        let bottom = self.bottom.get().load(Ordering::Acquire);
+        let top = self.top.get().load(Ordering::Acquire);
         (bottom - top).max(0) as usize
     }
 
@@ -413,7 +413,9 @@ impl<T> WorkStealingDeque<T> {
     /// ```
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        let bottom = self.bottom.get().load(Ordering::Acquire);
+        let top = self.top.get().load(Ordering::Acquire);
+        bottom == top
     }
 
     /// Get the capacity of the deque

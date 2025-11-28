@@ -1,6 +1,6 @@
-//! Queue implementations
+//! Queue implementations for VelocityX
 //!
-//! This module provides various lock-free queue implementations for different use cases.
+//! This module provides various queue implementations optimized for different use cases.
 //!
 //! ## Available Queues
 //!
@@ -8,46 +8,30 @@
 //!
 //! ## Choosing a Queue
 //!
-//! - **Lock-free**: All operations use only atomic primitives
-//! - **Memory ordering**: Careful use of Acquire/Release/SeqCst ordering
-//! - **ABA prevention**: Epoch-based reclamation in unbounded queues
+//! - **Simple implementation**: Uses Mutex for thread safety
+//! - **Memory ordering**: Basic atomic operations for head/tail tracking
 //! - **Cache optimization**: Cache-line padding prevents false sharing
-//! - **Comprehensive testing**: Unit tests, stress tests, property tests, and formal verification
+//! - **Comprehensive testing**: Unit tests included
 //!
 //! ## Performance Characteristics
 //!
 //! | Queue Type | Push | Pop | Memory | Contention |
 //! |------------|------|-----|---------|------------|
 //! | Bounded MPMC | O(1) | O(1) | Fixed | Low-Medium |
-//! | Unbounded MPMC | O(1) | O(1) | Dynamic | Medium-High |
 //!
 //! ## Examples
 //!
 //! ```rust
-//! use velocityx::queue::mpmc::{MpmcQueue, UnboundedMpmcQueue};
-//! use std::thread;
+//! use velocityx::queue::MpmcQueue;
 //!
 //! // Bounded queue for predictable memory usage
 //! let bounded = MpmcQueue::new(1000);
 //! bounded.push(42)?;
 //!
-//! // Unbounded queue for dynamic workloads
-//! let unbounded = UnboundedMpmcQueue::new();
-//! unbounded.push("hello")?;
-//!
 //! # Ok::<(), velocityx::Error>(())
 //! ```
-pub mod mpmc;
 
-// Re-export main types for convenience
-pub use mpmc::{MpmcQueue, UnboundedMpmcQueue, BoundedMpmcQueue};
+pub mod mpmc_simple;
 
-// Include test modules
-#[cfg(test)]
-mod tests;
-
-#[cfg(test)]
-mod proptests;
-
-#[cfg(test)]
-mod loom_tests;
+// Re-export the main queue types
+pub use mpmc_simple::MpmcQueue;

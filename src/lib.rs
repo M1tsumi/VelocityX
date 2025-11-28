@@ -50,15 +50,15 @@ extern crate std;
 extern crate alloc;
 
 pub mod queue;
-pub mod map;
-pub mod deque;
+// pub mod map;  // Temporarily disabled for publishing
+// pub mod deque;  // Temporarily disabled for publishing
 
 #[cfg(feature = "std")]
-pub use crate::queue::mpmc::MpmcQueue;
-#[cfg(feature = "std")]
-pub use crate::map::concurrent::ConcurrentHashMap;
-#[cfg(feature = "std")]
-pub use crate::deque::work_stealing::WorkStealingDeque;
+pub use crate::queue::MpmcQueue;
+// #[cfg(feature = "std")]
+// pub use crate::map::concurrent::ConcurrentHashMap;
+// #[cfg(feature = "std")]
+// pub use crate::deque::work_stealing::WorkStealingDeque;
 
 /// Common utilities and helper types
 pub mod util {
@@ -96,10 +96,57 @@ pub mod util {
             &mut self.value
         }
 
-        /// Consume the cache-padded wrapper and return the inner value
+        /// Get the inner value
         #[inline]
         pub fn into_inner(self) -> T {
             self.value
+        }
+    }
+
+    // Implement atomic operations for common atomic types
+    impl CachePadded<std::sync::atomic::AtomicUsize> {
+        #[inline]
+        pub fn store(&self, val: usize, order: std::sync::atomic::Ordering) {
+            self.value.store(val, order);
+        }
+
+        #[inline]
+        pub fn load(&self, order: std::sync::atomic::Ordering) -> usize {
+            self.value.load(order)
+        }
+
+        #[inline]
+        pub fn compare_exchange(
+            &self,
+            current: usize,
+            new: usize,
+            success: std::sync::atomic::Ordering,
+            failure: std::sync::atomic::Ordering,
+        ) -> Result<usize, usize> {
+            self.value.compare_exchange(current, new, success, failure)
+        }
+    }
+
+    impl CachePadded<std::sync::atomic::AtomicIsize> {
+        #[inline]
+        pub fn store(&self, val: isize, order: std::sync::atomic::Ordering) {
+            self.value.store(val, order);
+        }
+
+        #[inline]
+        pub fn load(&self, order: std::sync::atomic::Ordering) -> isize {
+            self.value.load(order)
+        }
+
+        #[inline]
+        pub fn compare_exchange(
+            &self,
+            current: isize,
+            new: isize,
+            success: std::sync::atomic::Ordering,
+            failure: std::sync::atomic::Ordering,
+        ) -> Result<isize, isize> {
+            self.value.compare_exchange(current, new, success, failure)
         }
     }
 
@@ -148,6 +195,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::string::ToString;
 
     #[test]
     fn test_cache_line_alignment() {

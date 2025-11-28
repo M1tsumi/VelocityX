@@ -1229,20 +1229,6 @@ mod tests {
 pub use MpmcQueue as BoundedMpmcQueue;
 pub use UnboundedMpmcQueue;
 
-    /// Try to pop an element from the queue without blocking
-    ///
-    /// This is an alias for `pop` provided for compatibility with standard queue APIs.
-    ///
-    /// # Returns
-    ///
-    /// * `Some(value)` if an element was successfully popped
-    /// * `None` if the queue is empty
-    #[inline]
-    pub fn try_pop(&self) -> Option<T> {
-        self.pop()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
