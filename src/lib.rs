@@ -40,14 +40,10 @@
 //! - NUMA-aware design where applicable
 
 #![no_std]
-#![warn(missing_docs, missing_debug_implementations, rust_2018_idioms)]
-#![cfg_attr(feature = "unstable", feature(doc_cfg))]
+#![deny(missing_docs, missing_debug_implementations, rust_2018_idioms)]
 
 #[cfg(feature = "std")]
 extern crate std;
-
-#[cfg(feature = "alloc")]
-extern crate alloc;
 
 pub mod queue;
 // pub mod map;  // Temporarily disabled for publishing

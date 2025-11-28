@@ -16,7 +16,6 @@ rust-version = "1.65"
 [features]
 default = ["std"]
 std = []
-alloc = []
 unstable = []
 loom = ["dep:loom"]
 
