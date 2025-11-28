@@ -105,16 +105,19 @@ pub mod util {
 
     // Implement atomic operations for common atomic types
     impl CachePadded<std::sync::atomic::AtomicUsize> {
+        /// Store a value into the atomic integer
         #[inline]
         pub fn store(&self, val: usize, order: std::sync::atomic::Ordering) {
             self.value.store(val, order);
         }
 
+        /// Load a value from the atomic integer
         #[inline]
         pub fn load(&self, order: std::sync::atomic::Ordering) -> usize {
             self.value.load(order)
         }
 
+        /// Compare and exchange operation on the atomic integer
         #[inline]
         pub fn compare_exchange(
             &self,
@@ -128,16 +131,19 @@ pub mod util {
     }
 
     impl CachePadded<std::sync::atomic::AtomicIsize> {
+        /// Store a value into the atomic integer
         #[inline]
         pub fn store(&self, val: isize, order: std::sync::atomic::Ordering) {
             self.value.store(val, order);
         }
 
+        /// Load a value from the atomic integer
         #[inline]
         pub fn load(&self, order: std::sync::atomic::Ordering) -> isize {
             self.value.load(order)
         }
 
+        /// Compare and exchange operation on the atomic integer
         #[inline]
         pub fn compare_exchange(
             &self,
