@@ -19,7 +19,7 @@
 //! ## Quick Start
 //!
 //! ```rust
-//! use velocityx::queue::mpmc::MpmcQueue;
+//! use velocityx::queue::MpmcQueue;
 //!
 //! let queue = MpmcQueue::new(100);
 //! queue.push(42);
