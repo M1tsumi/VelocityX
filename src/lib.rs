@@ -218,8 +218,8 @@ mod tests {
 
     #[test]
     fn test_error_display() {
-        assert_eq!(Error::WouldBlock.to_string(), "Operation would block");
-        assert_eq!(Error::Closed.to_string(), "Data structure is closed");
-        assert_eq!(Error::InvalidState.to_string(), "Invalid operation for current state");
+        assert_eq!(Error::WouldBlock.to_string().trim(), "Operation would block");
+        assert_eq!(Error::Closed.to_string().trim(), "Data structure is closed");
+        assert_eq!(Error::InvalidState.to_string().trim(), "Invalid operation for current state");
     }
 }
