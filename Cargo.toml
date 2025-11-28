@@ -1,6 +1,6 @@
 [package]
 name = "velocityx"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 authors = ["VelocityX Contributors"]
 description = "A production-ready Rust crate for lock-free concurrent data structures"
