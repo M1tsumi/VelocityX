@@ -16,6 +16,7 @@ rust-version = "1.65"
 [features]
 default = ["std"]
 std = []
+loom = ["dep:loom"]
 
 [dependencies]
 crossbeam-utils = "0.8"
@@ -27,18 +28,6 @@ loom = { version = "0.7", optional = true }
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 proptest = "1.0"
-rand = "0.8"
-tokio = { version = "1.0", features = ["full"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-
-[[bench]]
-name = "performance"
-harness = false
-
-[[bench]]
-name = "mpmc_queue_benchmarks"
-harness = false
 
 [profile.release]
 lto = true
