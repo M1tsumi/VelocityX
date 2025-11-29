@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             thread::spawn(move || {
                 let mut consumed = 0;
                 while consumed < items_per_producer * num_producers / num_consumers {
-                    if let Some(_) = queue.pop() {
+                    if queue.pop().is_some() {
                         consumed += 1;
                     }
                 }
