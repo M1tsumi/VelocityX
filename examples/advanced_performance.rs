@@ -12,7 +12,6 @@ use velocityx::Error;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Instant, Duration};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("VelocityX v0.3.0 Advanced Performance Demonstration");
