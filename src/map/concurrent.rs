@@ -743,6 +743,7 @@ impl<K, V> Drop for ConcurrentHashMap<K, V> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::string::ToString;
     use std::sync::Arc;
     use std::thread;
 

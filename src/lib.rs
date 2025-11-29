@@ -45,8 +45,8 @@
 extern crate std;
 
 pub mod queue;
-// pub mod map;  // Temporarily disabled for publishing
-// pub mod deque;  // Temporarily disabled for publishing
+// pub mod map;  // Temporarily disabled - needs compilation fixes
+// pub mod deque;  // Temporarily disabled - needs compilation fixes
 
 #[cfg(feature = "std")]
 pub use crate::queue::MpmcQueue;
@@ -175,6 +175,16 @@ pub enum Error {
     Closed,
     /// Invalid operation for current state
     InvalidState,
+    /// Capacity exceeded (for bounded structures)
+    CapacityExceeded,
+    /// Data structure is poisoned (thread panic occurred)
+    Poisoned,
+    /// Invalid argument provided
+    InvalidArgument,
+    /// Memory allocation failed
+    OutOfMemory,
+    /// Operation timed out
+    Timeout,
 }
 
 impl core::fmt::Display for Error {
@@ -183,6 +193,11 @@ impl core::fmt::Display for Error {
             Error::WouldBlock => write!(f, "Operation would block"),
             Error::Closed => write!(f, "Data structure is closed"),
             Error::InvalidState => write!(f, "Invalid operation for current state"),
+            Error::CapacityExceeded => write!(f, "Capacity exceeded"),
+            Error::Poisoned => write!(f, "Data structure is poisoned due to thread panic"),
+            Error::InvalidArgument => write!(f, "Invalid argument provided"),
+            Error::OutOfMemory => write!(f, "Memory allocation failed"),
+            Error::Timeout => write!(f, "Operation timed out"),
         }
     }
 }
@@ -228,5 +243,16 @@ mod tests {
             Error::InvalidState.to_string().trim(),
             "Invalid operation for current state"
         );
+        assert_eq!(Error::CapacityExceeded.to_string().trim(), "Capacity exceeded");
+        assert_eq!(
+            Error::Poisoned.to_string().trim(),
+            "Data structure is poisoned due to thread panic"
+        );
+        assert_eq!(
+            Error::InvalidArgument.to_string().trim(),
+            "Invalid argument provided"
+        );
+        assert_eq!(Error::OutOfMemory.to_string().trim(), "Memory allocation failed");
+        assert_eq!(Error::Timeout.to_string().trim(), "Operation timed out");
     }
 }

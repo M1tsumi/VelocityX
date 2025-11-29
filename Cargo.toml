@@ -1,6 +1,6 @@
 [package]
 name = "velocityx"
-version = "0.2.8"
+version = "0.3.0"
 edition = "2021"
 authors = ["VelocityX Contributors"]
 description = "A production-ready Rust crate for lock-free concurrent data structures"
@@ -16,6 +16,7 @@ rust-version = "1.65"
 [features]
 default = ["std"]
 std = []
+serde = ["dep:serde"]
 unstable = []
 loom = ["dep:loom"]
 
@@ -25,6 +26,7 @@ crossbeam-epoch = "0.9"
 crossbeam-deque = "0.8"
 parking_lot = "0.12"
 loom = { version = "0.7", optional = true }
+serde = { version = "1.0", optional = true, features = ["derive"] }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

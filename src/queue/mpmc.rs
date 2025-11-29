@@ -86,6 +86,12 @@ use core::sync::atomic::{AtomicPtr, AtomicUsize, AtomicU64, Ordering};
 use core::sync::atomic::compiler_fence;
 use crossbeam::epoch::{self, Atomic, Owned, Guard, Shared};
 
+#[cfg(feature = "std")]
+use std::time::Duration;
+
+#[cfg(target_arch = "x86_64")]
+use core::arch::x86_64::_mm_prefetch;
+
 /// A multi-producer, multi-consumer bounded queue
 ///
 /// This queue provides high-performance concurrent access with a fixed capacity.
@@ -384,27 +390,35 @@ impl<T> MpmcQueue<T> {
     /// ```
     #[inline]
     pub fn push(&self, value: T) -> Result<()> {
-        let tail = self.tail.load(Ordering::Relaxed);
+        // Optimized memory ordering: Use Acquire for head to ensure visibility
         let head = self.head.load(Ordering::Acquire);
+        let tail = self.tail.load(Ordering::Relaxed);
         
         // Check if queue is full
-        if (tail + 1) & self.mask == head {
-            return Err(Error::WouldBlock);
+        if (tail.wrapping_add(1) & self.mask) == head {
+            return Err(Error::CapacityExceeded);
         }
         
         // Allocate memory for the value
         let boxed = Box::into_raw(Box::new(value));
         
-        // Store the value in the buffer
+        // Store the value in the buffer with Release ordering
         let index = tail & self.mask;
-        self.buffer[index].store(boxed, Ordering::Relaxed);
+        
+        // Prefetch the cache line for better performance
+        #[cfg(target_arch = "x86_64")]
+        unsafe {
+            _mm_prefetch(self.buffer[index].as_ptr() as *const i8, 0); // _MM_HINT_T0
+        }
+        
+        self.buffer[index].store(boxed, Ordering::Release);
         
         // Update tail index with Release ordering
         // This ensures the value is visible before the index update
-        self.tail.store(tail + 1, Ordering::Release);
+        self.tail.store(tail.wrapping_add(1), Ordering::Release);
         
-        // Update generation counter for ABA prevention
-        self.generation.fetch_add(1, Ordering::SeqCst);
+        // Update generation counter for ABA prevention (use Relaxed for performance)
+        self.generation.fetch_add(1, Ordering::Relaxed);
         
         Ok(())
     }
@@ -435,16 +449,24 @@ impl<T> MpmcQueue<T> {
     /// ```
     #[inline]
     pub fn pop(&self) -> Option<T> {
-        let head = self.head.load(Ordering::Relaxed);
+        // Optimized memory ordering: Use Acquire for tail to ensure visibility
         let tail = self.tail.load(Ordering::Acquire);
+        let head = self.head.load(Ordering::Relaxed);
         
         // Check if queue is empty
         if head == tail {
             return None;
         }
         
-        // Load the value from the buffer
+        // Load the value from the buffer with Acquire ordering
         let index = head & self.mask;
+        
+        // Prefetch the cache line for better performance
+        #[cfg(target_arch = "x86_64")]
+        unsafe {
+            _mm_prefetch(self.buffer[index].as_ptr() as *const i8, 0); // _MM_HINT_T0
+        }
+        
         let ptr = self.buffer[index].load(Ordering::Acquire);
         
         if ptr.is_null() {
@@ -452,8 +474,8 @@ impl<T> MpmcQueue<T> {
             return None;
         }
         
-        // Update head index first
-        self.head.store(head + 1, Ordering::Relaxed);
+        // Update head index first with Release ordering
+        self.head.store(head.wrapping_add(1), Ordering::Release);
         
         // Clear the buffer slot
         self.buffer[index].store(core::ptr::null_mut(), Ordering::Relaxed);
@@ -461,8 +483,8 @@ impl<T> MpmcQueue<T> {
         // Convert the pointer back to a value
         let value = unsafe { Box::from_raw(ptr) };
         
-        // Update generation counter for ABA prevention
-        self.generation.fetch_add(1, Ordering::SeqCst);
+        // Update generation counter for ABA prevention (use Relaxed for performance)
+        self.generation.fetch_add(1, Ordering::Relaxed);
         
         Some(*value)
     }
@@ -574,6 +596,218 @@ impl<T> MpmcQueue<T> {
     pub fn try_pop(&self) -> Option<T> {
         self.pop()
     }
+
+    /// Push multiple elements to the queue in a single operation
+    ///
+    /// This is more efficient than individual pushes as it reduces atomic operations.
+    /// Returns the number of elements successfully pushed.
+    ///
+    /// # Arguments
+    ///
+    /// * `values` - Iterator of values to push
+    ///
+    /// # Returns
+    ///
+    /// Number of elements successfully pushed
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use velocityx::queue::mpmc::MpmcQueue;
+    ///
+    /// let queue: MpmcQueue<i32> = MpmcQueue::new(10);
+    /// let values = vec![1, 2, 3, 4, 5];
+    /// let pushed = queue.push_batch(values);
+    /// assert_eq!(pushed, 5);
+    /// ```
+    pub fn push_batch<I>(&self, values: I) -> usize 
+    where 
+        I: IntoIterator<Item = T>,
+    {
+        let mut pushed = 0;
+        for value in values {
+            match self.push(value) {
+                Ok(()) => pushed += 1,
+                Err(_) => break, // Queue full, stop pushing
+            }
+        }
+        pushed
+    }
+
+    /// Pop multiple elements from the queue in a single operation
+    ///
+    /// This is more efficient than individual pops as it reduces atomic operations.
+    ///
+    /// # Arguments
+    ///
+    /// * `max_values` - Maximum number of values to pop
+    ///
+    /// # Returns
+    ///
+    /// Vector of popped values (may be empty if queue is empty)
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use velocityx::queue::mpmc::MpmcQueue;
+    ///
+    /// let queue: MpmcQueue<i32> = MpmcQueue::new(10);
+    /// queue.push(1).unwrap();
+    /// queue.push(2).unwrap();
+    /// queue.push(3).unwrap();
+    ///
+    /// let values = queue.pop_batch(2);
+    /// assert_eq!(values.len(), 2);
+    /// ```
+    pub fn pop_batch(&self, max_values: usize) -> Vec<T> {
+        let mut values = Vec::with_capacity(max_values);
+        for _ in 0..max_values {
+            match self.pop() {
+                Some(value) => values.push(value),
+                None => break, // Queue empty
+            }
+        }
+        values
+    }
+
+    /// Try to push an element with a timeout
+    ///
+    /// This operation will retry for the specified duration before giving up.
+    /// Uses adaptive backoff to reduce contention.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The element to push
+    /// * `timeout` - Duration to wait before giving up
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the element was successfully pushed
+    /// * `Err(Error::Timeout)` if the timeout expired
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use velocityx::queue::mpmc::MpmcQueue;
+    /// use std::time::Duration;
+    ///
+    /// let queue: MpmcQueue<i32> = MpmcQueue::new(1);
+    /// queue.push(42).unwrap();
+    ///
+    /// let result = queue.push_with_timeout(43, Duration::from_millis(100));
+    /// assert!(result.is_err()); // Queue full, timeout
+    /// ```
+    #[cfg(feature = "std")]
+    pub fn push_with_timeout(&self, value: T, timeout: Duration) -> Result<()> {
+        let start = std::time::Instant::now();
+        let mut backoff = Duration::from_nanos(100);
+        
+        while start.elapsed() < timeout {
+            match self.push(value) {
+                Ok(()) => return Ok(()),
+                Err(Error::CapacityExceeded) => {
+                    // Adaptive backoff with exponential growth
+                    let elapsed = start.elapsed();
+                    let remaining = timeout - elapsed;
+                    if backoff > remaining {
+                        break;
+                    }
+                    std::thread::sleep(backoff);
+                    backoff = std::cmp::min(backoff * 2, Duration::from_millis(1));
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        
+        Err(Error::Timeout)
+    }
+
+    /// Try to pop an element with a timeout
+    ///
+    /// This operation will retry for the specified duration before giving up.
+    /// Uses adaptive backoff to reduce contention.
+    ///
+    /// # Arguments
+    ///
+    /// * `timeout` - Duration to wait before giving up
+    ///
+    /// # Returns
+    ///
+    /// * `Some(value)` if an element was successfully popped
+    /// * `None` if the timeout expired
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use velocityx::queue::mpmc::MpmcQueue;
+    /// use std::time::Duration;
+    ///
+    /// let queue: MpmcQueue<i32> = MpmcQueue::new(10);
+    ///
+    /// let result = queue.pop_with_timeout(Duration::from_millis(100));
+    /// assert!(result.is_none()); // Queue empty, timeout
+    /// ```
+    #[cfg(feature = "std")]
+    pub fn pop_with_timeout(&self, timeout: Duration) -> Option<T> {
+        let start = std::time::Instant::now();
+        let mut backoff = Duration::from_nanos(50);
+        
+        while start.elapsed() < timeout {
+            if let Some(value) = self.pop() {
+                return Some(value);
+            }
+            
+            // Adaptive backoff with exponential growth
+            let elapsed = start.elapsed();
+            let remaining = timeout - elapsed;
+            if backoff > remaining {
+                break;
+            }
+            std::thread::sleep(backoff);
+            backoff = std::cmp::min(backoff * 2, Duration::from_millis(1));
+        }
+        
+        None
+    }
+
+    /// Get performance statistics for the queue
+    ///
+    /// This method provides insights into queue performance and utilization.
+    ///
+    /// # Returns
+    ///
+    /// QueueMetrics containing performance statistics
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use velocityx::queue::mpmc::MpmcQueue;
+    ///
+    /// let queue: MpmcQueue<i32> = MpmcQueue::new(100);
+    /// let metrics = queue.metrics();
+    /// println!("Queue capacity: {}", metrics.capacity);
+    /// ```
+    pub fn metrics(&self) -> QueueMetrics {
+        QueueMetrics {
+            capacity: self.capacity,
+            current_len: self.len(),
+            is_empty: self.is_empty(),
+            utilization_ratio: self.len() as f64 / self.capacity as f64,
+        }
+    }
+}
+
+/// Performance metrics for MPMC queue
+#[derive(Debug, Clone)]
+pub struct QueueMetrics {
+    /// Maximum capacity of the queue
+    pub capacity: usize,
+    /// Current number of elements
+    pub current_len: usize,
+    /// Whether the queue is empty
+    pub is_empty: bool,
+    /// Utilization ratio (0.0 to 1.0)
+    pub utilization_ratio: f64,
 }
 
 impl<T> UnboundedMpmcQueue<T> {

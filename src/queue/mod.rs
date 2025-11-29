@@ -31,7 +31,8 @@
 //! # Ok::<(), velocityx::Error>(())
 //! ```
 
+// pub mod mpmc;  // Disabled due to compilation issues
 pub mod mpmc_simple;
 
 // Re-export the main queue types
-pub use mpmc_simple::MpmcQueue;
+pub use mpmc_simple::{MpmcQueue, QueueMetrics};

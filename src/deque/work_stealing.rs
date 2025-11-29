@@ -126,7 +126,7 @@ pub struct WorkStealingDeque<T> {
 impl<T> Clone for WorkStealingDeque<T> {
     fn clone(&self) -> Self {
         // Create a new deque with the same capacity
-        let mut new_deque = WorkStealingDeque::with_capacity(self.capacity);
+        let mut new_deque: WorkStealingDeque<T> = WorkStealingDeque::with_capacity(self.capacity);
         
         // Note: This is a shallow clone - it doesn't copy the elements
         // For a true clone, you'd need to drain the original deque
