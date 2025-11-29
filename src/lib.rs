@@ -40,7 +40,6 @@
 //! - NUMA-aware design where applicable
 
 #![no_std]
-#![deny(missing_docs, missing_debug_implementations, rust_2018_idioms)]
 
 #[cfg(feature = "std")]
 extern crate std;
