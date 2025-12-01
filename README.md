@@ -3,7 +3,6 @@
 [![Crates.io](https://img.shields.io/crates/v/velocityx.svg)](https://crates.io/crates/velocityx)
 [![Documentation](https://docs.rs/velocityx/badge.svg)](https://docs.rs/velocityx)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE-MIT)
-[![Build Status](https://github.com/velocityx/velocityx/workflows/CI/badge.svg)](https://github.com/velocityx/velocityx/actions)
 
 A comprehensive lock-free data structures library designed for high-performance concurrent programming in Rust.
 
