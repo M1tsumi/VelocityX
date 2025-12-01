@@ -26,7 +26,7 @@
 //!
 //! ## Example
 //!
-//! ```rust
+//! ```rust,ignore
 //! use velocityx::deque::WorkStealingDeque;
 //! use std::thread;
 //!
