@@ -9,7 +9,7 @@ repository = "https://github.com/velocityx/velocityx"
 homepage = "https://velocityx.rs"
 readme = "README.md"
 keywords = ["concurrent", "lock-free", "data-structures", "performance", "metrics"]
-categories = ["concurrency", "data-structures", "algorithms", "performance"]
+categories = ["concurrency", "data-structures", "algorithms"]
 license = "MIT OR Apache-2.0"
 rust-version = "1.65"
 
