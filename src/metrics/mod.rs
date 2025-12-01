@@ -7,10 +7,10 @@
 #[cfg(feature = "std")]
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 #[cfg(feature = "std")]
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// Core performance metrics for all data structures
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct PerformanceMetrics {
     /// Total number of operations performed
     pub total_operations: u64,
@@ -28,21 +28,6 @@ pub struct PerformanceMetrics {
     pub memory_usage_bytes: usize,
     /// Peak memory usage in bytes
     pub peak_memory_usage_bytes: usize,
-}
-
-impl Default for PerformanceMetrics {
-    fn default() -> Self {
-        Self {
-            total_operations: 0,
-            successful_operations: 0,
-            failed_operations: 0,
-            contended_operations: 0,
-            avg_operation_time_ns: 0,
-            max_operation_time_ns: 0,
-            memory_usage_bytes: 0,
-            peak_memory_usage_bytes: 0,
-        }
-    }
 }
 
 impl PerformanceMetrics {
@@ -152,7 +137,7 @@ impl AtomicMetrics {
 
     /// Update memory usage
     pub fn update_memory_usage(&self, usage: usize) {
-        let current_usage = self.memory_usage.swap(usage, Ordering::Relaxed);
+        let _current_usage = self.memory_usage.swap(usage, Ordering::Relaxed);
         
         // Update peak usage if current usage is higher
         let mut current_peak = self.peak_memory_usage.load(Ordering::Relaxed);

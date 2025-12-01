@@ -9,8 +9,6 @@ use core::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::atomic::{AtomicUsize, Ordering as StdOrdering};
 
 #[cfg(feature = "std")]
-use std::time::Duration;
-#[cfg(feature = "std")]
 use std::boxed::Box;
 #[cfg(feature = "std")]
 use std::vec::Vec;
@@ -372,6 +370,7 @@ mod tests {
     use super::*;
     use std::sync::Arc;
     use std::thread;
+    use std::vec;
 
     #[test]
     fn test_basic_operations() {
@@ -452,7 +451,7 @@ mod tests {
     #[test]
     fn test_producer_consumer() {
         let stack = Arc::new(LockFreeStack::new());
-        let mut handles = vec![];
+        let mut handles: Vec<std::thread::JoinHandle<()>> = vec![];
         
         // Producer thread
         let producer_stack = Arc::clone(&stack);

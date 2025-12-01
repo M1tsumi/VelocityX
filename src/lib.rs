@@ -221,7 +221,7 @@ pub mod util {
     impl<T> CachePadded<parking_lot::Mutex<T>> {
         /// Lock the mutex
         #[inline]
-        pub fn lock(&self) -> parking_lot::MutexGuard<T> {
+        pub fn lock(&self) -> parking_lot::MutexGuard<'_, T> {
             self.value.lock()
         }
     }
