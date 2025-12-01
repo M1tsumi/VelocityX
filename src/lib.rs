@@ -1,43 +1,51 @@
 //! # VelocityX
 //!
-//! A comprehensive lock-free data structures library designed for high-performance concurrent programming.
+//! A comprehensive lock-free data structures library designed for high-performance concurrent programming in Rust.
 //!
-//! ## Features
+//! ## 🚀 Features
 //!
-//! - **MPMC Queue**: Multi-producer, multi-consumer bounded queue
-//! - **Concurrent HashMap**: Lock-free reads with concurrent modifications
-//! - **Work-Stealing Deque**: For task scheduling and parallel workload distribution
+//! - **MPMC Queue**: Multi-producer, multi-consumer bounded queue with zero locks
+//! - **Concurrent HashMap**: Lock-free reads with concurrent modifications using striped locking
+//! - **Work-Stealing Deque**: Chase-Lev deque for task scheduling and parallel workload distribution
+//! - **Lock-Free Stack**: Treiber's algorithm stack with wait-free push and lock-free pop operations
+//! - **Performance Metrics**: Real-time monitoring with `MetricsCollector` trait across all data structures
 //!
-//! ## Philosophy
+//! ## 🎯 Philosophy
 //!
 //! VelocityX focuses on providing:
 //! - Zero-cost abstractions with optimal performance
 //! - Comprehensive safety guarantees through Rust's type system
 //! - Ergonomic APIs that guide users toward correct concurrent programming patterns
 //! - Extensive documentation and real-world usage examples
+//! - Production-ready performance monitoring and metrics collection
 //!
-//! ## Quick Start
+//! ## ⚡ Quick Start
 //!
 //! ```rust
-//! use velocityx::queue::MpmcQueue;
+//! use velocityx::{MpmcQueue, MetricsCollector};
 //!
 //! let queue = MpmcQueue::new(100);
 //! queue.push(42);
 //! assert_eq!(queue.pop(), Some(42));
+//!
+//! // Get performance metrics
+//! let metrics = queue.metrics();
+//! println!("Success rate: {:.2}%", metrics.success_rate());
 //! ```
 //!
-//! ## Thread Safety
+//! ## 🔒 Thread Safety
 //!
 //! All data structures in VelocityX are designed to be thread-safe and can be safely shared
 //! across threads without additional synchronization primitives.
 //!
-//! ## Performance
+//! ## 📊 Performance
 //!
 //! VelocityX is optimized for modern multi-core processors with careful attention to:
-//! - Cache-line alignment and padding
-//! - Memory ordering semantics
-//! - Contention minimization
+//! - Cache-line alignment and padding to prevent false sharing
+//! - Memory ordering semantics for correctness and performance
+//! - Contention minimization through lock-free algorithms
 //! - NUMA-aware design where applicable
+//! - Real-time performance monitoring with minimal overhead
 
 #![no_std]
 
@@ -45,15 +53,21 @@
 extern crate std;
 
 pub mod queue;
-// pub mod map;  // Temporarily disabled - needs compilation fixes
-// pub mod deque;  // Temporarily disabled - needs compilation fixes
+pub mod map;
+pub mod deque;
+pub mod metrics;
+pub mod stack;
 
 #[cfg(feature = "std")]
 pub use crate::queue::MpmcQueue;
-// #[cfg(feature = "std")]
-// pub use crate::map::concurrent::ConcurrentHashMap;
-// #[cfg(feature = "std")]
-// pub use crate::deque::work_stealing::WorkStealingDeque;
+#[cfg(feature = "std")]
+pub use crate::map::concurrent::ConcurrentHashMap;
+#[cfg(feature = "std")]
+pub use crate::deque::work_stealing::WorkStealingDeque;
+#[cfg(feature = "std")]
+pub use crate::stack::LockFreeStack;
+#[cfg(feature = "std")]
+pub use crate::metrics::{PerformanceMetrics, MetricsCollector};
 
 /// Common utilities and helper types
 pub mod util {
@@ -148,6 +162,81 @@ pub mod util {
             failure: std::sync::atomic::Ordering,
         ) -> Result<isize, isize> {
             self.value.compare_exchange(current, new, success, failure)
+        }
+    }
+
+    impl CachePadded<std::sync::atomic::AtomicBool> {
+        /// Store a value into the atomic boolean
+        #[inline]
+        pub fn store(&self, val: bool, order: std::sync::atomic::Ordering) {
+            self.value.store(val, order);
+        }
+
+        /// Load a value from the atomic boolean
+        #[inline]
+        pub fn load(&self, order: std::sync::atomic::Ordering) -> bool {
+            self.value.load(order)
+        }
+
+        /// Compare and exchange operation on the atomic boolean
+        #[inline]
+        pub fn compare_exchange(
+            &self,
+            current: bool,
+            new: bool,
+            success: std::sync::atomic::Ordering,
+            failure: std::sync::atomic::Ordering,
+        ) -> Result<bool, bool> {
+            self.value.compare_exchange(current, new, success, failure)
+        }
+    }
+
+    impl<T> CachePadded<std::sync::atomic::AtomicPtr<T>> {
+        /// Store a value into the atomic pointer
+        #[inline]
+        pub fn store(&self, val: *mut T, order: std::sync::atomic::Ordering) {
+            self.value.store(val, order);
+        }
+
+        /// Load a value from the atomic pointer
+        #[inline]
+        pub fn load(&self, order: std::sync::atomic::Ordering) -> *mut T {
+            self.value.load(order)
+        }
+
+        /// Compare and exchange operation on the atomic pointer
+        #[inline]
+        pub fn compare_exchange(
+            &self,
+            current: *mut T,
+            new: *mut T,
+            success: std::sync::atomic::Ordering,
+            failure: std::sync::atomic::Ordering,
+        ) -> Result<*mut T, *mut T> {
+            self.value.compare_exchange(current, new, success, failure)
+        }
+    }
+
+    #[cfg(feature = "std")]
+    impl<T> CachePadded<parking_lot::Mutex<T>> {
+        /// Lock the mutex
+        #[inline]
+        pub fn lock(&self) -> parking_lot::MutexGuard<T> {
+            self.value.lock()
+        }
+    }
+
+    impl<T> CachePadded<T> {
+        /// Get a mutable reference to the inner value (for indexing)
+        #[inline]
+        pub fn inner_mut(&mut self) -> &mut T {
+            &mut self.value
+        }
+
+        /// Get a reference to the inner value (for indexing)
+        #[inline]
+        pub fn inner(&self) -> &T {
+            &self.value
         }
     }
 

@@ -63,10 +63,19 @@
 //! ```
 
 use crate::util::CachePadded;
-use crate::{Error, Result};
 use core::hash::{Hash, Hasher};
 use core::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 use parking_lot::Mutex;
+
+#[cfg(feature = "std")]
+use std::boxed::Box;
+#[cfg(feature = "std")]
+use std::alloc::{self, Layout};
+#[cfg(feature = "std")]
+use std::vec::Vec;
+#[cfg(feature = "std")]
+use std::hash::{RandomState, BuildHasher};
+use crate::metrics::MetricsCollector;
 
 /// Default initial capacity for the hash map
 const DEFAULT_CAPACITY: usize = 16;
@@ -166,7 +175,7 @@ struct ResizeState<K, V> {
 
 impl<K, V> ConcurrentHashMap<K, V>
 where
-    K: Hash + Eq + Send + Sync + 'static,
+    K: Hash + Eq + Send + Sync + Clone + 'static,
     V: Send + Sync + 'static,
 {
     /// Create a new concurrent hash map with default capacity
@@ -433,8 +442,8 @@ where
 
     fn allocate_table(capacity: usize) -> *mut Bucket<K, V> {
         let table = unsafe {
-            alloc::alloc::alloc(
-                alloc::alloc::Layout::from_size_align(
+            alloc::alloc(
+                Layout::from_size_align(
                     capacity * core::mem::size_of::<Bucket<K, V>>(),
                     64,
                 )
@@ -443,7 +452,7 @@ where
         };
         
         if table.is_null() {
-            alloc::alloc::handle_alloc_error(alloc::alloc::Layout::from_size_align(
+            alloc::handle_alloc_error(Layout::from_size_align(
                 capacity * core::mem::size_of::<Bucket<K, V>>(),
                 64,
             ).unwrap());
@@ -454,7 +463,7 @@ where
             unsafe {
                 let bucket = table.add(i);
                 (*bucket).len = 0;
-                (*bucket).entries = [None; 16];
+                (*bucket).entries = [const { None }; 16];
             }
         }
         
@@ -462,7 +471,7 @@ where
     }
 
     fn hash_key(&self, key: &K) -> u64 {
-        let mut hasher = fxhash::FxHasher::default();
+        let mut hasher = RandomState::new().build_hasher();
         key.hash(&mut hasher);
         hasher.finish()
     }
@@ -576,15 +585,15 @@ where
             self.resize_state.store(core::ptr::null_mut(), Ordering::Release);
             
             // Deallocate old table and resize state
-            alloc::alloc::dealloc(
+            alloc::dealloc(
                 resize_state.old_table as *mut u8,
-                alloc::alloc::Layout::from_size_align(
+                Layout::from_size_align(
                     resize_state.old_capacity * core::mem::size_of::<Bucket<K, V>>(),
                     64,
                 ).unwrap(),
             );
             
-            drop(Box::from_raw(resize_state as *mut ResizeState<K, V>));
+            drop(Box::from_raw(resize_state as *const ResizeState<K, V> as *mut ResizeState<K, V>));
         }
     }
 
@@ -603,7 +612,7 @@ where
                         // Key exists, update value
                         let old_value = core::ptr::read(&entry.value);
                         (*bucket).entries[i] = Some(Entry {
-                            key,
+                            key: key.clone(),
                             value,
                             hash,
                             distance: entry.distance,
@@ -720,9 +729,9 @@ impl<K, V> Drop for ConcurrentHashMap<K, V> {
                 }
                 
                 // Deallocate table
-                alloc::alloc::dealloc(
+                alloc::dealloc(
                     table as *mut u8,
-                    alloc::alloc::Layout::from_size_align(
+                    Layout::from_size_align(
                         capacity * core::mem::size_of::<Bucket<K, V>>(),
                         64,
                     ).unwrap(),
@@ -743,9 +752,12 @@ impl<K, V> Drop for ConcurrentHashMap<K, V> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::string::String;
     use std::string::ToString;
     use std::sync::Arc;
     use std::thread;
+    use std::format;
+    use std::vec;
 
     #[test]
     fn test_basic_operations() {
@@ -795,7 +807,7 @@ mod tests {
         // Spawn reader threads
         let mut reader_handles = vec![];
         for _ in 0..num_readers {
-            let map = Arc::clone(&map);
+            let map: Arc<ConcurrentHashMap<i32, i32>> = Arc::clone(&map);
             let handle = thread::spawn(move || {
                 let mut count = 0;
                 for i in 0..num_writers * items_per_writer {
@@ -890,5 +902,29 @@ mod tests {
         // Verify clone is unaffected
         assert_eq!(map1.get(&10), Some(&"new_value".to_string()));
         assert_eq!(map2.get(&10), None);
+    }
+}
+
+#[cfg(feature = "std")]
+impl<K, V> MetricsCollector for ConcurrentHashMap<K, V>
+where
+    K: Hash + Eq + Send + Sync + Clone + 'static,
+    V: Send + Sync + 'static,
+{
+    fn metrics(&self) -> crate::metrics::PerformanceMetrics {
+        // For now, return empty metrics - can be enhanced later
+        crate::metrics::PerformanceMetrics::default()
+    }
+    
+    fn reset_metrics(&self) {
+        // No-op for now
+    }
+    
+    fn set_metrics_enabled(&self, _enabled: bool) {
+        // No-op for now
+    }
+    
+    fn is_metrics_enabled(&self) -> bool {
+        false // Disabled for now
     }
 }

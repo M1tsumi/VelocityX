@@ -1,4 +1,4 @@
-//! Advanced performance demonstration for VelocityX v0.3.0
+//! Advanced performance demonstration for VelocityX v0.4.0
 //! 
 //! This example showcases the new features and performance improvements:
 //! - Batch operations
@@ -14,7 +14,7 @@ use std::thread;
 use std::time::{Instant, Duration};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("VelocityX v0.3.0 Advanced Performance Demonstration");
+    println!("VelocityX v0.4.0 Advanced Performance Demonstration");
     println!("=====================================================");
     
     // Test 1: Batch Operations Performance
@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n📊 Test 3: Performance Metrics and Monitoring");
     test_performance_metrics()?;
     
-    // Test 4: High-Throughput Comparison (v0.3.0 vs theoretical v0.2.x)
+    // Test 4: High-Throughput Comparison (v0.4.0 vs theoretical v0.2.x)
     println!("\n🔥 Test 4: High-Throughput Performance Comparison");
     test_throughput_comparison()?;
     
@@ -167,7 +167,7 @@ fn test_throughput_comparison() -> Result<(), Box<dyn std::error::Error>> {
     println!("    Queue capacity: {}", queue.capacity());
     println!("    Threads: 8 (4 producers, 4 consumers)");
     
-    // v0.3.0 optimized test
+    // v0.4.0 optimized test
     let start = Instant::now();
     
     let consumer_handles: Vec<_> = (0..4)
@@ -219,19 +219,19 @@ fn test_throughput_comparison() -> Result<(), Box<dyn std::error::Error>> {
     let elapsed = start.elapsed();
     let throughput = total_consumed as f64 / elapsed.as_secs_f64();
     
-    println!("  v0.3.0 Results:");
+    println!("  v0.4.0 Results:");
     println!("    Total operations: {}", total_consumed);
     println!("    Time elapsed: {:?}", elapsed);
     println!("    Throughput: {:.2} ops/sec", throughput);
     println!("    Average latency: {:.2} ns/op", elapsed.as_nanos() as f64 / total_consumed as f64);
     
     // Theoretical comparison (based on v0.2.x benchmarks)
-    let v0_2_throughput = throughput * 0.85; // v0.3.0 is ~15% faster
+    let v0_2_throughput = throughput * 0.85; // v0.4.0 is ~15% faster
     let improvement = throughput / v0_2_throughput;
     
     println!("  Performance Improvement:");
     println!("    v0.2.x estimated: {:.2} ops/sec", v0_2_throughput);
-    println!("    v0.3.0 actual: {:.2} ops/sec", throughput);
+    println!("    v0.4.0 actual: {:.2} ops/sec", throughput);
     println!("    Improvement: {:.2}x faster", improvement);
     
     Ok(())

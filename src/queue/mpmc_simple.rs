@@ -3,6 +3,7 @@
 //! A basic multi-producer, multi-consumer queue implementation.
 
 use crate::util::CachePadded;
+use crate::metrics::{AtomicMetrics, MetricsCollector};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::vec::Vec;
@@ -19,6 +20,8 @@ pub struct MpmcQueue<T> {
     tail: CachePadded<AtomicUsize>,
     push_lock: Mutex<()>,
     pop_lock: Mutex<()>,
+    metrics: AtomicMetrics,
+    metrics_enabled: AtomicUsize,
 }
 
 impl<T> MpmcQueue<T> {
@@ -33,17 +36,24 @@ impl<T> MpmcQueue<T> {
             tail: CachePadded::new(AtomicUsize::new(0)),
             push_lock: Mutex::new(()),
             pop_lock: Mutex::new(()),
+            metrics: AtomicMetrics::default(),
+            metrics_enabled: AtomicUsize::new(1), // Enabled by default
         }
     }
 
     /// Push a value into the queue
     pub fn push(&self, value: T) -> Result<(), crate::Error> {
+        #[cfg(feature = "std")]
+        let start = std::time::Instant::now();
+        
         let _guard = self.push_lock.lock().unwrap();
 
         let tail = self.tail.get().load(Ordering::Relaxed);
         let head = self.head.get().load(Ordering::Relaxed);
 
         if tail - head >= self.capacity {
+            #[cfg(feature = "std")]
+            self.metrics.record_failure();
             return Err(crate::Error::WouldBlock);
         }
 
@@ -54,17 +64,25 @@ impl<T> MpmcQueue<T> {
         }
         self.tail.get().store(tail + 1, Ordering::Release);
 
+        #[cfg(feature = "std")]
+        self.metrics.record_success(start.elapsed());
+        
         Ok(())
     }
 
     /// Pop a value from the queue
     pub fn pop(&self) -> Option<T> {
+        #[cfg(feature = "std")]
+        let start = std::time::Instant::now();
+        
         let _guard = self.pop_lock.lock().unwrap();
 
         let head = self.head.get().load(Ordering::Relaxed);
         let tail = self.tail.get().load(Ordering::Relaxed);
 
         if head == tail {
+            #[cfg(feature = "std")]
+            self.metrics.record_failure();
             return None;
         }
 
@@ -74,6 +92,9 @@ impl<T> MpmcQueue<T> {
             buffer[index].take()
         };
         self.head.get().store(head + 1, Ordering::Release);
+
+        #[cfg(feature = "std")]
+        self.metrics.record_success(start.elapsed());
 
         value
     }
@@ -100,11 +121,6 @@ impl<T> MpmcQueue<T> {
         let head = self.head.get().load(Ordering::Relaxed);
         let tail = self.tail.get().load(Ordering::Relaxed);
         head == tail
-    }
-
-    /// Get the capacity of the queue
-    pub const fn capacity(&self) -> usize {
-        self.capacity
     }
 
     /// Push multiple elements to the queue in a single operation
@@ -305,32 +321,6 @@ impl<T> MpmcQueue<T> {
         
         None
     }
-
-    /// Get performance statistics for the queue
-    ///
-    /// This method provides insights into queue performance and utilization.
-    ///
-    /// # Returns
-    ///
-    /// QueueMetrics containing performance statistics
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use velocityx::queue::MpmcQueue;
-    ///
-    /// let queue: MpmcQueue<i32> = MpmcQueue::new(100);
-    /// let metrics = queue.metrics();
-    /// println!("Queue capacity: {}", metrics.capacity);
-    /// ```
-    pub fn metrics(&self) -> QueueMetrics {
-        QueueMetrics {
-            capacity: self.capacity,
-            current_len: self.len(),
-            is_empty: self.is_empty(),
-            utilization_ratio: self.len() as f64 / self.capacity as f64,
-        }
-    }
 }
 
 /// Performance metrics for MPMC queue
@@ -355,6 +345,8 @@ impl<T> Clone for MpmcQueue<T> {
             tail: CachePadded::new(AtomicUsize::new(self.tail.get().load(Ordering::Relaxed))),
             push_lock: Mutex::new(()),
             pop_lock: Mutex::new(()),
+            metrics: AtomicMetrics::default(),
+            metrics_enabled: AtomicUsize::new(self.metrics_enabled.load(Ordering::Relaxed)),
         }
     }
 }
@@ -367,6 +359,25 @@ impl<T> Drop for MpmcQueue<T> {
                 *item = None;
             }
         }
+    }
+}
+
+#[cfg(feature = "std")]
+impl<T> MetricsCollector for MpmcQueue<T> {
+    fn metrics(&self) -> crate::metrics::PerformanceMetrics {
+        self.metrics.snapshot()
+    }
+    
+    fn reset_metrics(&self) {
+        self.metrics.reset();
+    }
+    
+    fn set_metrics_enabled(&self, enabled: bool) {
+        self.metrics_enabled.store(enabled as usize, std::sync::atomic::Ordering::Relaxed);
+    }
+    
+    fn is_metrics_enabled(&self) -> bool {
+        self.metrics_enabled.load(std::sync::atomic::Ordering::Relaxed) != 0
     }
 }
 

@@ -73,6 +73,12 @@ use crate::util::{align_to_cache_line, CachePadded};
 use crate::{Error, Result};
 use core::sync::atomic::{AtomicIsize, AtomicUsize, Ordering};
 
+#[cfg(feature = "std")]
+use std::boxed::Box;
+#[cfg(feature = "std")]
+use std::vec::Vec;
+use crate::metrics::MetricsCollector;
+
 /// A work-stealing deque based on the Chase-Lev algorithm
 ///
 /// This deque is designed for work-stealing schedulers where one thread (the owner)
@@ -126,7 +132,7 @@ pub struct WorkStealingDeque<T> {
 impl<T> Clone for WorkStealingDeque<T> {
     fn clone(&self) -> Self {
         // Create a new deque with the same capacity
-        let mut new_deque: WorkStealingDeque<T> = WorkStealingDeque::with_capacity(self.capacity);
+        let mut new_deque = WorkStealingDeque::<T>::with_capacity(self.capacity);
         
         // Note: This is a shallow clone - it doesn't copy the elements
         // For a true clone, you'd need to drain the original deque
@@ -182,7 +188,9 @@ impl<T> WorkStealingDeque<T> {
         let mask = capacity - 1;
         
         // Allocate aligned buffer
-        let buffer = vec![None; capacity].into_boxed_slice();
+        let mut buffer = Vec::with_capacity(capacity);
+        buffer.resize_with(capacity, || None);
+        let buffer = buffer.into_boxed_slice();
         
         Self {
             buffer: CachePadded::new(buffer),
@@ -222,7 +230,7 @@ impl<T> WorkStealingDeque<T> {
     /// assert!(deque.push(43).is_err()); // Deque is full
     /// ```
     #[inline]
-    pub fn push(&self, value: T) -> Result<()> {
+    pub fn push(&mut self, value: T) -> Result<()> {
         let bottom = self.bottom.get().load(Ordering::Relaxed);
         let top = self.top.get().load(Ordering::Acquire);
         
@@ -234,7 +242,7 @@ impl<T> WorkStealingDeque<T> {
         let index = (bottom as usize) & self.mask;
         
         // Write the value
-        self.buffer[index] = Some(value);
+        self.buffer.inner_mut()[index] = Some(value);
         
         // Update bottom index with Release ordering
         self.bottom.get().store(bottom + 1, Ordering::Release);
@@ -267,7 +275,7 @@ impl<T> WorkStealingDeque<T> {
     /// assert_eq!(deque.pop(), None); // Deque is empty
     /// ```
     #[inline]
-    pub fn pop(&self) -> Option<T> {
+    pub fn pop(&mut self) -> Option<T> {
         let bottom = self.bottom.get().load(Ordering::Relaxed);
         
         if bottom == 0 {
@@ -282,7 +290,7 @@ impl<T> WorkStealingDeque<T> {
         if top <= bottom - 1 {
             // Deque is not empty, take the element
             let index = ((bottom - 1) as usize) & self.mask;
-            let value = self.buffer[index].take();
+            let value = self.buffer.inner_mut()[index].take();
             
             if top == bottom - 1 {
                 // Deque became empty, try to update top
@@ -335,7 +343,7 @@ impl<T> WorkStealingDeque<T> {
     /// assert_eq!(deque.steal(), None); // Deque is empty
     /// ```
     #[inline]
-    pub fn steal(&self) -> Option<T> {
+    pub fn steal(&mut self) -> Option<T> {
         let top = self.top.get().load(Ordering::Acquire);
         let bottom = self.bottom.get().load(Ordering::Acquire);
         
@@ -346,7 +354,7 @@ impl<T> WorkStealingDeque<T> {
         let index = (top as usize) & self.mask;
         
         // Try to take the element
-        if let Some(value) = self.buffer[index].take() {
+        if let Some(value) = self.buffer.inner_mut()[index].take() {
             // Try to update top
             if self.top.get().compare_exchange(
                 top,
@@ -358,7 +366,7 @@ impl<T> WorkStealingDeque<T> {
                 Some(value)
             } else {
                 // Failed to update top, put the element back
-                self.buffer[index] = Some(value);
+                self.buffer.inner_mut()[index] = Some(value);
                 None
             }
         } else {
@@ -450,7 +458,7 @@ impl<T> WorkStealingDeque<T> {
     /// * `Ok(())` if the element was successfully pushed
     /// * `Err(Error::WouldBlock)` if the deque is full
     #[inline]
-    pub fn try_push(&self, value: T) -> Result<()> {
+    pub fn try_push(&mut self, value: T) -> Result<()> {
         self.push(value)
     }
 
@@ -463,7 +471,7 @@ impl<T> WorkStealingDeque<T> {
     /// * `Some(value)` if an element was successfully popped
     /// * `None` if the deque is empty
     #[inline]
-    pub fn try_pop(&self) -> Option<T> {
+    pub fn try_pop(&mut self) -> Option<T> {
         self.pop()
     }
 
@@ -476,7 +484,7 @@ impl<T> WorkStealingDeque<T> {
     /// * `Some(value)` if an element was successfully stolen
     /// * `None` if the deque is empty or contention occurred
     #[inline]
-    pub fn try_steal(&self) -> Option<T> {
+    pub fn try_steal(&mut self) -> Option<T> {
         self.steal()
     }
 }
@@ -486,10 +494,12 @@ mod tests {
     use super::*;
     use std::sync::Arc;
     use std::thread;
+    use std::format;
+    use std::vec;
 
     #[test]
     fn test_basic_operations() {
-        let deque: WorkStealingDeque<i32> = WorkStealingDeque::new(4);
+        let mut deque: WorkStealingDeque<i32> = WorkStealingDeque::new(4);
         
         // Test empty deque
         assert_eq!(deque.len(), 0);
@@ -509,7 +519,7 @@ mod tests {
 
     #[test]
     fn test_lifo_behavior() {
-        let deque: WorkStealingDeque<i32> = WorkStealingDeque::new(4);
+        let mut deque: WorkStealingDeque<i32> = WorkStealingDeque::new(4);
         
         // Push multiple items
         assert!(deque.push(1).is_ok());
@@ -525,7 +535,7 @@ mod tests {
 
     #[test]
     fn test_fifo_stealing() {
-        let deque: WorkStealingDeque<i32> = WorkStealingDeque::new(4);
+        let mut deque: WorkStealingDeque<i32> = WorkStealingDeque::new(4);
         
         // Push multiple items
         assert!(deque.push(1).is_ok());
@@ -541,7 +551,7 @@ mod tests {
 
     #[test]
     fn test_mixed_operations() {
-        let deque: WorkStealingDeque<i32> = WorkStealingDeque::new(4);
+        let mut deque: WorkStealingDeque<i32> = WorkStealingDeque::new(4);
         
         // Push items
         assert!(deque.push(1).is_ok());
@@ -558,7 +568,7 @@ mod tests {
 
     #[test]
     fn test_full_deque() {
-        let deque: WorkStealingDeque<i32> = WorkStealingDeque::new(2);
+        let mut deque: WorkStealingDeque<i32> = WorkStealingDeque::new(2);
         
         // Fill the deque
         assert!(deque.push(1).is_ok());
@@ -577,7 +587,7 @@ mod tests {
 
     #[test]
     fn test_wrap_around() {
-        let deque: WorkStealingDeque<i32> = WorkStealingDeque::new(4);
+        let mut deque: WorkStealingDeque<i32> = WorkStealingDeque::new(4);
         
         // Fill and empty the deque multiple times to test wrap-around
         for i in 0..10 {
@@ -714,7 +724,7 @@ mod tests {
 
     #[test]
     fn test_debug_format() {
-        let deque: WorkStealingDeque<i32> = WorkStealingDeque::new(4);
+        let mut deque: WorkStealingDeque<i32> = WorkStealingDeque::new(4);
         let debug_str = format!("{:?}", deque);
         assert!(debug_str.contains("WorkStealingDeque"));
         assert!(debug_str.contains("capacity"));
@@ -722,7 +732,7 @@ mod tests {
 
     #[test]
     fn test_empty_deque_edge_cases() {
-        let deque: WorkStealingDeque<i32> = WorkStealingDeque::new(4);
+        let mut deque: WorkStealingDeque<i32> = WorkStealingDeque::new(4);
         
         // Multiple pops on empty deque
         assert_eq!(deque.pop(), None);
@@ -737,5 +747,25 @@ mod tests {
         // Should be empty again
         assert_eq!(deque.pop(), None);
         assert_eq!(deque.steal(), None);
+    }
+}
+
+#[cfg(feature = "std")]
+impl<T> MetricsCollector for WorkStealingDeque<T> {
+    fn metrics(&self) -> crate::metrics::PerformanceMetrics {
+        // For now, return empty metrics - can be enhanced later
+        crate::metrics::PerformanceMetrics::default()
+    }
+    
+    fn reset_metrics(&self) {
+        // No-op for now
+    }
+    
+    fn set_metrics_enabled(&self, _enabled: bool) {
+        // No-op for now
+    }
+    
+    fn is_metrics_enabled(&self) -> bool {
+        false // Disabled for now
     }
 }
