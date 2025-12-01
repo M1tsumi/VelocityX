@@ -440,7 +440,7 @@ mod tests {
         
         // Verify all elements are present
         let mut count = 0;
-        while let Some(_) = stack.pop() {
+        while stack.pop().is_some() {
             count += 1;
         }
         
@@ -451,7 +451,7 @@ mod tests {
     #[test]
     fn test_producer_consumer() {
         let stack = Arc::new(LockFreeStack::new());
-        let mut handles: Vec<std::thread::JoinHandle<()>> = vec![];
+        let _handles: Vec<std::thread::JoinHandle<()>> = vec![];
         
         // Producer thread
         let producer_stack = Arc::clone(&stack);

@@ -123,6 +123,11 @@ impl<T> MpmcQueue<T> {
         head == tail
     }
 
+    /// Get the capacity of the queue
+    pub fn capacity(&self) -> usize {
+        self.capacity
+    }
+
     /// Push multiple elements to the queue in a single operation
     ///
     /// This is more efficient than individual pushes as it reduces lock contention.

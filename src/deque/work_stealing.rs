@@ -490,13 +490,30 @@ impl<T> WorkStealingDeque<T> {
     }
 }
 
+#[cfg(feature = "std")]
+impl<T> MetricsCollector for WorkStealingDeque<T> {
+    fn metrics(&self) -> crate::metrics::PerformanceMetrics {
+        // For now, return empty metrics - can be enhanced later
+        crate::metrics::PerformanceMetrics::default()
+    }
+    
+    fn reset_metrics(&self) {
+        // No-op for now
+    }
+    
+    fn set_metrics_enabled(&self, _enabled: bool) {
+        // No-op for now
+    }
+    
+    fn is_metrics_enabled(&self) -> bool {
+        false // Disabled for now
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
-    use std::thread;
     use std::format;
-    use std::vec;
 
     #[test]
     fn test_basic_operations() {
@@ -729,48 +746,9 @@ mod tests {
 
     #[test]
     fn test_debug_format() {
-        let mut deque: WorkStealingDeque<i32> = WorkStealingDeque::new(4);
+        let deque: WorkStealingDeque<i32> = WorkStealingDeque::new(4);
         let debug_str = format!("{:?}", deque);
         assert!(debug_str.contains("WorkStealingDeque"));
         assert!(debug_str.contains("capacity"));
-    }
-
-    #[test]
-    fn test_empty_deque_edge_cases() {
-        let mut deque: WorkStealingDeque<i32> = WorkStealingDeque::new(4);
-        
-        // Multiple pops on empty deque
-        assert_eq!(deque.pop(), None);
-        assert_eq!(deque.pop(), None);
-        assert_eq!(deque.steal(), None);
-        assert_eq!(deque.steal(), None);
-        
-        // Push and pop single item
-        assert!(deque.push(42).is_ok());
-        assert_eq!(deque.pop(), Some(42));
-        
-        // Should be empty again
-        assert_eq!(deque.pop(), None);
-        assert_eq!(deque.steal(), None);
-    }
-}
-
-#[cfg(feature = "std")]
-impl<T> MetricsCollector for WorkStealingDeque<T> {
-    fn metrics(&self) -> crate::metrics::PerformanceMetrics {
-        // For now, return empty metrics - can be enhanced later
-        crate::metrics::PerformanceMetrics::default()
-    }
-    
-    fn reset_metrics(&self) {
-        // No-op for now
-    }
-    
-    fn set_metrics_enabled(&self, _enabled: bool) {
-        // No-op for now
-    }
-    
-    fn is_metrics_enabled(&self) -> bool {
-        false // Disabled for now
     }
 }

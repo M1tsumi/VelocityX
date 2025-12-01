@@ -9,6 +9,7 @@
 
 use velocityx::queue::MpmcQueue;
 use velocityx::Error;
+use velocityx::MetricsCollector;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Instant, Duration};
@@ -127,10 +128,13 @@ fn test_performance_metrics() -> Result<(), Box<dyn std::error::Error>> {
     let metrics = queue.metrics();
     
     println!("  Queue Metrics:");
-    println!("    Capacity: {}", metrics.capacity);
-    println!("    Current length: {}", metrics.current_len);
-    println!("    Is empty: {}", metrics.is_empty);
-    println!("    Utilization ratio: {:.2}%", metrics.utilization_ratio * 100.0);
+    println!("    Capacity: {}", queue.capacity());
+    println!("    Current length: {}", queue.len());
+    println!("    Is empty: {}", queue.is_empty());
+    println!("    Utilization ratio: {:.2}%", (queue.len() as f64 / queue.capacity() as f64) * 100.0);
+    println!("    Total operations: {}", metrics.total_operations);
+    println!("    Success rate: {:.2}%", metrics.success_rate());
+    println!("    Average operation time: {} ns", metrics.avg_operation_time_ns);
     
     // Test metrics under contention
     let handles: Vec<_> = (0..4)
@@ -151,8 +155,8 @@ fn test_performance_metrics() -> Result<(), Box<dyn std::error::Error>> {
     
     for handle in handles {
         let thread_metrics = handle.join().unwrap();
-        println!("  Thread metrics - Utilization: {:.2}%, Length: {}", 
-                thread_metrics.utilization_ratio * 100.0, thread_metrics.current_len);
+        println!("  Thread metrics - Total ops: {}, Success rate: {:.2}%", 
+                thread_metrics.total_operations, thread_metrics.success_rate());
     }
     
     Ok(())

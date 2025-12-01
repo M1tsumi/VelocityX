@@ -753,6 +753,30 @@ impl<K, V> Drop for ConcurrentHashMap<K, V> {
     }
 }
 
+#[cfg(feature = "std")]
+impl<K, V> MetricsCollector for ConcurrentHashMap<K, V>
+where
+    K: Hash + Eq + Send + Sync + Clone + 'static,
+    V: Send + Sync + 'static,
+{
+    fn metrics(&self) -> crate::metrics::PerformanceMetrics {
+        // For now, return empty metrics - can be enhanced later
+        crate::metrics::PerformanceMetrics::default()
+    }
+    
+    fn reset_metrics(&self) {
+        // No-op for now
+    }
+    
+    fn set_metrics_enabled(&self, _enabled: bool) {
+        // No-op for now
+    }
+    
+    fn is_metrics_enabled(&self) -> bool {
+        false // Disabled for now
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -911,29 +935,5 @@ mod tests {
         // Verify clone is unaffected
         assert_eq!(map1.get(&10), Some(&"new_value".to_string()));
         assert_eq!(map2.get(&10), None);
-    }
-}
-
-#[cfg(feature = "std")]
-impl<K, V> MetricsCollector for ConcurrentHashMap<K, V>
-where
-    K: Hash + Eq + Send + Sync + Clone + 'static,
-    V: Send + Sync + 'static,
-{
-    fn metrics(&self) -> crate::metrics::PerformanceMetrics {
-        // For now, return empty metrics - can be enhanced later
-        crate::metrics::PerformanceMetrics::default()
-    }
-    
-    fn reset_metrics(&self) {
-        // No-op for now
-    }
-    
-    fn set_metrics_enabled(&self, _enabled: bool) {
-        // No-op for now
-    }
-    
-    fn is_metrics_enabled(&self) -> bool {
-        false // Disabled for now
     }
 }
