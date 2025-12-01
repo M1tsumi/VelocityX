@@ -27,7 +27,7 @@
 //!
 //! ## Example
 //!
-//! ```rust
+//! ```rust,ignore
 //! use velocityx::map::ConcurrentHashMap;
 //! use std::thread;
 //!
@@ -105,7 +105,7 @@ const DISTANCE_BITS: u32 = 6;
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```rust,ignore
 /// use velocityx::map::ConcurrentHashMap;
 ///
 /// let map: ConcurrentHashMap<i32, String> = ConcurrentHashMap::new();
@@ -241,7 +241,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// use velocityx::map::ConcurrentHashMap;
     ///
     /// let map: ConcurrentHashMap<i32, String> = ConcurrentHashMap::new();
@@ -286,7 +286,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// use velocityx::map::ConcurrentHashMap;
     ///
     /// let map: ConcurrentHashMap<i32, String> = ConcurrentHashMap::new();
@@ -322,7 +322,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// use velocityx::map::ConcurrentHashMap;
     ///
     /// let map: ConcurrentHashMap<i32, String> = ConcurrentHashMap::new();

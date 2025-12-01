@@ -34,7 +34,7 @@
 //!
 //! // Owner thread (worker)
 //! let owner = thread::spawn({
-//!     let deque = deque.clone();
+//!     let mut deque = deque.clone();
 //!     move || {
 //!     // Push work items
 //!     for i in 0..100 {
@@ -51,7 +51,7 @@
 //!
 //! // Thief thread (stealer)
 //! let thief = thread::spawn({
-//!     let deque = deque.clone();
+//!     let mut deque = deque.clone();
 //!     move || {
 //!     let mut stolen = 0;
 //!     while stolen < 50 {
@@ -98,7 +98,7 @@ use crate::metrics::MetricsCollector;
 /// ```rust
 /// use velocityx::deque::WorkStealingDeque;
 ///
-/// let deque: WorkStealingDeque<i32> = WorkStealingDeque::new(10);
+/// let mut deque: WorkStealingDeque<i32> = WorkStealingDeque::new(10);
 /// 
 /// // Owner operations
 /// deque.push(42);
@@ -226,7 +226,7 @@ impl<T> WorkStealingDeque<T> {
     /// ```rust
     /// use velocityx::deque::WorkStealingDeque;
     ///
-    /// let deque: WorkStealingDeque<i32> = WorkStealingDeque::new(1);
+    /// let mut deque: WorkStealingDeque<i32> = WorkStealingDeque::new(1);
     /// assert!(deque.push(42).is_ok());
     /// assert!(deque.push(43).is_err()); // Deque is full
     /// ```
@@ -270,7 +270,7 @@ impl<T> WorkStealingDeque<T> {
     /// ```rust
     /// use velocityx::deque::WorkStealingDeque;
     ///
-    /// let deque: WorkStealingDeque<i32> = WorkStealingDeque::new(10);
+    /// let mut deque: WorkStealingDeque<i32> = WorkStealingDeque::new(10);
     /// deque.push(42).unwrap();
     /// assert_eq!(deque.pop(), Some(42));
     /// assert_eq!(deque.pop(), None); // Deque is empty
@@ -338,11 +338,11 @@ impl<T> WorkStealingDeque<T> {
     /// ```rust
     /// use velocityx::deque::WorkStealingDeque;
     ///
-    /// let deque: WorkStealingDeque<i32> = WorkStealingDeque::new(10);
+    /// let mut deque: WorkStealingDeque<i32> = WorkStealingDeque::new(10);
     /// deque.push(42).unwrap();
     /// assert_eq!(deque.steal(), Some(42));
     /// assert_eq!(deque.steal(), None); // Deque is empty
-    /// ```
+    /// ``` 
     #[inline]
     pub fn steal(&mut self) -> Option<T> {
         let top = self.top.get().load(Ordering::Acquire);
@@ -390,7 +390,7 @@ impl<T> WorkStealingDeque<T> {
     /// ```rust
     /// use velocityx::deque::WorkStealingDeque;
     ///
-    /// let deque: WorkStealingDeque<i32> = WorkStealingDeque::new(10);
+    /// let mut deque: WorkStealingDeque<i32> = WorkStealingDeque::new(10);
     /// assert_eq!(deque.len(), 0);
     /// deque.push(42).unwrap();
     /// assert_eq!(deque.len(), 1);
@@ -415,11 +415,11 @@ impl<T> WorkStealingDeque<T> {
     /// ```rust
     /// use velocityx::deque::WorkStealingDeque;
     ///
-    /// let deque: WorkStealingDeque<i32> = WorkStealingDeque::new(10);
+    /// let mut deque: WorkStealingDeque<i32> = WorkStealingDeque::new(10);
     /// assert!(deque.is_empty());
     /// deque.push(42).unwrap();
     /// assert!(!deque.is_empty());
-    /// ```
+    /// ``` 
     #[inline]
     pub fn is_empty(&self) -> bool {
         let bottom = self.bottom.get().load(Ordering::Acquire);
