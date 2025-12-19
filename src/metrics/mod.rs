@@ -6,8 +6,7 @@
 
 #[cfg(feature = "std")]
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-#[cfg(feature = "std")]
-use std::time::Duration;
+use core::time::Duration;
 
 /// Core performance metrics for all data structures
 #[derive(Debug, Default)]
@@ -104,11 +103,11 @@ impl AtomicMetrics {
     /// Record a successful operation with its duration
     pub fn record_success(&self, duration: Duration) {
         let duration_ns = duration.as_nanos() as u64;
-        
+
         self.total_operations.fetch_add(1, Ordering::Relaxed);
         self.successful_operations.fetch_add(1, Ordering::Relaxed);
         self.total_time_ns.fetch_add(duration_ns, Ordering::Relaxed);
-        
+
         // Update max time if this operation was slower
         let mut current_max = self.max_time_ns.load(Ordering::Relaxed);
         while duration_ns > current_max {
@@ -138,7 +137,7 @@ impl AtomicMetrics {
     /// Update memory usage
     pub fn update_memory_usage(&self, usage: usize) {
         let _current_usage = self.memory_usage.swap(usage, Ordering::Relaxed);
-        
+
         // Update peak usage if current usage is higher
         let mut current_peak = self.peak_memory_usage.load(Ordering::Relaxed);
         while usage > current_peak {
@@ -170,7 +169,11 @@ impl AtomicMetrics {
             successful_operations: successful_ops,
             failed_operations: failed_ops,
             contended_operations: contended_ops,
-            avg_operation_time_ns: if total_ops > 0 { total_time / total_ops } else { 0 },
+            avg_operation_time_ns: if total_ops > 0 {
+                total_time / total_ops
+            } else {
+                0
+            },
             max_operation_time_ns: max_time,
             memory_usage_bytes: memory_usage,
             peak_memory_usage_bytes: peak_memory_usage,
@@ -190,16 +193,17 @@ impl AtomicMetrics {
 }
 
 /// Trait for data structures that support performance metrics
+#[cfg(feature = "std")]
 pub trait MetricsCollector {
     /// Get current performance metrics
     fn metrics(&self) -> PerformanceMetrics;
-    
+
     /// Reset all metrics
     fn reset_metrics(&self);
-    
+
     /// Enable or disable metrics collection
     fn set_metrics_enabled(&self, enabled: bool);
-    
+
     /// Check if metrics collection is enabled
     fn is_metrics_enabled(&self) -> bool;
 }
@@ -228,8 +232,12 @@ impl AtomicMetrics {
 
 #[cfg(not(feature = "std"))]
 pub trait MetricsCollector {
-    fn metrics(&self) -> PerformanceMetrics { PerformanceMetrics::default() }
+    fn metrics(&self) -> PerformanceMetrics {
+        PerformanceMetrics::default()
+    }
     fn reset_metrics(&self) {}
     fn set_metrics_enabled(&self, _enabled: bool) {}
-    fn is_metrics_enabled(&self) -> bool { false }
+    fn is_metrics_enabled(&self) -> bool {
+        false
+    }
 }

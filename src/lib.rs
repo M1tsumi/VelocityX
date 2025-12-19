@@ -52,22 +52,28 @@
 #[cfg(feature = "std")]
 extern crate std;
 
-pub mod queue;
-pub mod map;
+#[cfg(feature = "std")]
 pub mod deque;
+#[cfg(feature = "std")]
+pub mod map;
 pub mod metrics;
+#[cfg(feature = "std")]
+pub mod queue;
+#[cfg(feature = "std")]
 pub mod stack;
 
 #[cfg(feature = "std")]
-pub use crate::queue::MpmcQueue;
+pub use crate::deque::work_stealing::WorkStealingDeque;
 #[cfg(feature = "std")]
 pub use crate::map::concurrent::ConcurrentHashMap;
 #[cfg(feature = "std")]
-pub use crate::deque::work_stealing::WorkStealingDeque;
+pub use crate::metrics::{MetricsCollector, PerformanceMetrics};
+#[cfg(all(feature = "std", feature = "lockfree"))]
+pub use crate::queue::LockFreeMpmcQueue;
+#[cfg(feature = "std")]
+pub use crate::queue::MpmcQueue;
 #[cfg(feature = "std")]
 pub use crate::stack::LockFreeStack;
-#[cfg(feature = "std")]
-pub use crate::metrics::{PerformanceMetrics, MetricsCollector};
 
 /// Common utilities and helper types
 pub mod util {
@@ -113,16 +119,16 @@ pub mod util {
     }
 
     // Implement atomic operations for common atomic types
-    impl CachePadded<std::sync::atomic::AtomicUsize> {
+    impl CachePadded<core::sync::atomic::AtomicUsize> {
         /// Store a value into the atomic integer
         #[inline]
-        pub fn store(&self, val: usize, order: std::sync::atomic::Ordering) {
+        pub fn store(&self, val: usize, order: core::sync::atomic::Ordering) {
             self.value.store(val, order);
         }
 
         /// Load a value from the atomic integer
         #[inline]
-        pub fn load(&self, order: std::sync::atomic::Ordering) -> usize {
+        pub fn load(&self, order: core::sync::atomic::Ordering) -> usize {
             self.value.load(order)
         }
 
@@ -132,23 +138,23 @@ pub mod util {
             &self,
             current: usize,
             new: usize,
-            success: std::sync::atomic::Ordering,
-            failure: std::sync::atomic::Ordering,
+            success: core::sync::atomic::Ordering,
+            failure: core::sync::atomic::Ordering,
         ) -> Result<usize, usize> {
             self.value.compare_exchange(current, new, success, failure)
         }
     }
 
-    impl CachePadded<std::sync::atomic::AtomicIsize> {
+    impl CachePadded<core::sync::atomic::AtomicIsize> {
         /// Store a value into the atomic integer
         #[inline]
-        pub fn store(&self, val: isize, order: std::sync::atomic::Ordering) {
+        pub fn store(&self, val: isize, order: core::sync::atomic::Ordering) {
             self.value.store(val, order);
         }
 
         /// Load a value from the atomic integer
         #[inline]
-        pub fn load(&self, order: std::sync::atomic::Ordering) -> isize {
+        pub fn load(&self, order: core::sync::atomic::Ordering) -> isize {
             self.value.load(order)
         }
 
@@ -158,23 +164,23 @@ pub mod util {
             &self,
             current: isize,
             new: isize,
-            success: std::sync::atomic::Ordering,
-            failure: std::sync::atomic::Ordering,
+            success: core::sync::atomic::Ordering,
+            failure: core::sync::atomic::Ordering,
         ) -> Result<isize, isize> {
             self.value.compare_exchange(current, new, success, failure)
         }
     }
 
-    impl CachePadded<std::sync::atomic::AtomicBool> {
+    impl CachePadded<core::sync::atomic::AtomicBool> {
         /// Store a value into the atomic boolean
         #[inline]
-        pub fn store(&self, val: bool, order: std::sync::atomic::Ordering) {
+        pub fn store(&self, val: bool, order: core::sync::atomic::Ordering) {
             self.value.store(val, order);
         }
 
         /// Load a value from the atomic boolean
         #[inline]
-        pub fn load(&self, order: std::sync::atomic::Ordering) -> bool {
+        pub fn load(&self, order: core::sync::atomic::Ordering) -> bool {
             self.value.load(order)
         }
 
@@ -184,23 +190,23 @@ pub mod util {
             &self,
             current: bool,
             new: bool,
-            success: std::sync::atomic::Ordering,
-            failure: std::sync::atomic::Ordering,
+            success: core::sync::atomic::Ordering,
+            failure: core::sync::atomic::Ordering,
         ) -> Result<bool, bool> {
             self.value.compare_exchange(current, new, success, failure)
         }
     }
 
-    impl<T> CachePadded<std::sync::atomic::AtomicPtr<T>> {
+    impl<T> CachePadded<core::sync::atomic::AtomicPtr<T>> {
         /// Store a value into the atomic pointer
         #[inline]
-        pub fn store(&self, val: *mut T, order: std::sync::atomic::Ordering) {
+        pub fn store(&self, val: *mut T, order: core::sync::atomic::Ordering) {
             self.value.store(val, order);
         }
 
         /// Load a value from the atomic pointer
         #[inline]
-        pub fn load(&self, order: std::sync::atomic::Ordering) -> *mut T {
+        pub fn load(&self, order: core::sync::atomic::Ordering) -> *mut T {
             self.value.load(order)
         }
 
@@ -210,10 +216,18 @@ pub mod util {
             &self,
             current: *mut T,
             new: *mut T,
-            success: std::sync::atomic::Ordering,
-            failure: std::sync::atomic::Ordering,
+            success: core::sync::atomic::Ordering,
+            failure: core::sync::atomic::Ordering,
         ) -> Result<*mut T, *mut T> {
             self.value.compare_exchange(current, new, success, failure)
+        }
+    }
+
+    impl CachePadded<core::sync::atomic::AtomicU64> {
+        /// Add to the atomic integer, returning the previous value
+        #[inline]
+        pub fn fetch_add(&self, val: u64, order: core::sync::atomic::Ordering) -> u64 {
+            self.value.fetch_add(val, order)
         }
     }
 
@@ -332,7 +346,10 @@ mod tests {
             Error::InvalidState.to_string().trim(),
             "Invalid operation for current state"
         );
-        assert_eq!(Error::CapacityExceeded.to_string().trim(), "Capacity exceeded");
+        assert_eq!(
+            Error::CapacityExceeded.to_string().trim(),
+            "Capacity exceeded"
+        );
         assert_eq!(
             Error::Poisoned.to_string().trim(),
             "Data structure is poisoned due to thread panic"
@@ -341,7 +358,10 @@ mod tests {
             Error::InvalidArgument.to_string().trim(),
             "Invalid argument provided"
         );
-        assert_eq!(Error::OutOfMemory.to_string().trim(), "Memory allocation failed");
+        assert_eq!(
+            Error::OutOfMemory.to_string().trim(),
+            "Memory allocation failed"
+        );
         assert_eq!(Error::Timeout.to_string().trim(), "Operation timed out");
     }
 }

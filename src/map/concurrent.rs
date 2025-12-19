@@ -67,15 +67,15 @@ use core::hash::{Hash, Hasher};
 use core::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 use parking_lot::Mutex;
 
-#[cfg(feature = "std")]
-use std::boxed::Box;
+use crate::metrics::MetricsCollector;
 #[cfg(feature = "std")]
 use std::alloc::{self, Layout};
 #[cfg(feature = "std")]
-use std::vec::Vec;
+use std::boxed::Box;
 #[cfg(feature = "std")]
-use std::hash::{RandomState, BuildHasher};
-use crate::metrics::MetricsCollector;
+use std::hash::{BuildHasher, RandomState};
+#[cfg(feature = "std")]
+use std::vec::Vec;
 
 /// Default initial capacity for the hash map
 const DEFAULT_CAPACITY: usize = 16;
@@ -116,16 +116,16 @@ const DISTANCE_BITS: u32 = 6;
 pub struct ConcurrentHashMap<K, V> {
     // Table of buckets, each bucket is an atomic pointer to a node
     table: CachePadded<AtomicPtr<Bucket<K, V>>>,
-    
+
     // Number of buckets in the table (always power of 2)
     capacity: AtomicUsize,
-    
+
     // Number of elements in the map
     size: AtomicUsize,
-    
+
     // Striped locks for write operations
     stripes: [CachePadded<Mutex<()>>; STRIPE_COUNT],
-    
+
     // Resize state
     resize_state: CachePadded<AtomicPtr<ResizeState<K, V>>>,
 }
@@ -135,7 +135,7 @@ pub struct ConcurrentHashMap<K, V> {
 struct Bucket<K, V> {
     // Array of entries in this bucket
     entries: [Option<Entry<K, V>>; 16],
-    
+
     // Number of entries in this bucket
     len: usize,
 }
@@ -145,13 +145,13 @@ struct Bucket<K, V> {
 struct Entry<K, V> {
     // The key
     key: K,
-    
+
     // The value
     value: V,
-    
+
     // Hash of the key for quick comparison
     hash: u64,
-    
+
     // Distance from ideal position (for robin hood hashing)
     distance: u32,
 }
@@ -160,16 +160,16 @@ struct Entry<K, V> {
 struct ResizeState<K, V> {
     // Old table being migrated from
     old_table: *mut Bucket<K, V>,
-    
+
     // New table being migrated to
     new_table: *mut Bucket<K, V>,
-    
+
     // Old capacity
     old_capacity: usize,
-    
+
     // New capacity
     new_capacity: usize,
-    
+
     // Migration progress (number of buckets migrated)
     progress: AtomicUsize,
 }
@@ -213,9 +213,9 @@ where
         } else {
             capacity.next_power_of_two()
         };
-        
+
         let table = Self::allocate_table(capacity);
-        
+
         Self {
             table: CachePadded::new(AtomicPtr::new(table)),
             capacity: AtomicUsize::new(capacity),
@@ -252,15 +252,15 @@ where
         let hash = self.hash_key(&key);
         let capacity = self.capacity.load(Ordering::Acquire);
         let stripe = self.stripe_index(hash, capacity);
-        
+
         // Check if we need to resize
         if self.should_resize() {
             self.try_resize();
         }
-        
+
         // Acquire stripe lock
         let _lock = self.stripes[stripe].lock();
-        
+
         // Perform insertion
         if let Some(old_value) = self.insert_locked(key, value, hash) {
             Some(old_value)
@@ -297,7 +297,7 @@ where
     pub fn get(&self, key: &K) -> Option<&V> {
         let hash = self.hash_key(key);
         let capacity = self.capacity.load(Ordering::Acquire);
-        
+
         // Check for ongoing resize
         let resize_state = self.resize_state.load(Ordering::Acquire);
         if !resize_state.is_null() {
@@ -305,7 +305,7 @@ where
             self.help_resize(resize_state);
             return self.get(key); // Retry after helping
         }
-        
+
         self.get_locked(key, hash, capacity)
     }
 
@@ -334,10 +334,10 @@ where
         let hash = self.hash_key(key);
         let capacity = self.capacity.load(Ordering::Acquire);
         let stripe = self.stripe_index(hash, capacity);
-        
+
         // Acquire stripe lock
         let _lock = self.stripes[stripe].lock();
-        
+
         // Perform removal
         if let Some(value) = self.remove_locked(key, hash, capacity) {
             self.size.fetch_sub(1, Ordering::Relaxed);
@@ -405,11 +405,11 @@ where
     pub fn clear(&self) {
         // Acquire all stripe locks
         let locks: Vec<_> = self.stripes.iter().map(|stripe| stripe.lock()).collect();
-        
+
         // Clear the table
         let capacity = self.capacity.load(Ordering::Relaxed);
         let table = self.table.load(Ordering::Relaxed);
-        
+
         unsafe {
             for i in 0..capacity {
                 let bucket = table.add(i);
@@ -419,10 +419,10 @@ where
                 }
             }
         }
-        
+
         // Reset size
         self.size.store(0, Ordering::Relaxed);
-        
+
         drop(locks); // Release locks
     }
 
@@ -430,28 +430,26 @@ where
 
     fn new_stripes() -> [CachePadded<Mutex<()>>; STRIPE_COUNT] {
         // Initialize array of stripes safely
-        let stripes: [CachePadded<Mutex<()>>; STRIPE_COUNT] = core::array::from_fn(|_| CachePadded::new(Mutex::new(())));
+        let stripes: [CachePadded<Mutex<()>>; STRIPE_COUNT] =
+            core::array::from_fn(|_| CachePadded::new(Mutex::new(())));
         stripes
     }
 
     fn allocate_table(capacity: usize) -> *mut Bucket<K, V> {
         let table = unsafe {
             alloc::alloc(
-                Layout::from_size_align(
-                    capacity * core::mem::size_of::<Bucket<K, V>>(),
-                    64,
-                )
-                .unwrap(),
+                Layout::from_size_align(capacity * core::mem::size_of::<Bucket<K, V>>(), 64)
+                    .unwrap(),
             ) as *mut Bucket<K, V>
         };
-        
+
         if table.is_null() {
-            alloc::handle_alloc_error(Layout::from_size_align(
-                capacity * core::mem::size_of::<Bucket<K, V>>(),
-                64,
-            ).unwrap());
+            alloc::handle_alloc_error(
+                Layout::from_size_align(capacity * core::mem::size_of::<Bucket<K, V>>(), 64)
+                    .unwrap(),
+            );
         }
-        
+
         // Initialize buckets
         for i in 0..capacity {
             unsafe {
@@ -460,7 +458,7 @@ where
                 (*bucket).entries = [const { None }; 16];
             }
         }
-        
+
         table
     }
 
@@ -486,19 +484,23 @@ where
 
     fn try_resize(&self) {
         // Try to acquire resize lock
-        if self.resize_state.compare_exchange(
-            core::ptr::null_mut(),
-            core::ptr::null_mut(),
-            Ordering::Acquire,
-            Ordering::Relaxed,
-        ).is_ok() {
+        if self
+            .resize_state
+            .compare_exchange(
+                core::ptr::null_mut(),
+                core::ptr::null_mut(),
+                Ordering::Acquire,
+                Ordering::Relaxed,
+            )
+            .is_ok()
+        {
             // We won the resize race
             let old_capacity = self.capacity.load(Ordering::Relaxed);
             let new_capacity = old_capacity * 2;
-            
+
             let old_table = self.table.load(Ordering::Relaxed);
             let new_table = Self::allocate_table(new_capacity);
-            
+
             // Create resize state
             let resize_state = Box::into_raw(Box::new(ResizeState {
                 old_table,
@@ -507,10 +509,10 @@ where
                 new_capacity,
                 progress: AtomicUsize::new(0),
             }));
-            
+
             // Set resize state
             self.resize_state.store(resize_state, Ordering::Release);
-            
+
             // Start migration
             self.help_resize(resize_state);
         }
@@ -521,21 +523,23 @@ where
             let state = &*resize_state;
             let old_capacity = state.old_capacity;
             let _new_capacity = state.new_capacity;
-            
+
             // Migrate buckets incrementally
             let mut migrated = state.progress.load(Ordering::Relaxed);
-            
+
             while migrated < old_capacity {
                 let next_migrated = (migrated + 16).min(old_capacity);
-                
+
                 // Migrate range of buckets
                 for i in migrated..next_migrated {
                     self.migrate_bucket(state, i);
                 }
-                
-                migrated = state.progress.fetch_add(next_migrated - migrated, Ordering::Relaxed);
+
+                migrated = state
+                    .progress
+                    .fetch_add(next_migrated - migrated, Ordering::Relaxed);
             }
-            
+
             // Complete resize
             if migrated >= old_capacity {
                 self.complete_resize(state);
@@ -547,13 +551,13 @@ where
         unsafe {
             let old_bucket = resize_state.old_table.add(bucket_index);
             let old_len = (*old_bucket).len;
-            
+
             for i in 0..old_len {
                 if let Some(entry) = &(*old_bucket).entries[i] {
                     // Rehash and insert into new table
                     let new_bucket_index = self.bucket_index(entry.hash, resize_state.new_capacity);
                     let new_bucket = resize_state.new_table.add(new_bucket_index);
-                    
+
                     // Insert into new bucket (simplified - real implementation would handle collisions)
                     if (*new_bucket).len < 16 {
                         (*new_bucket).entries[(*new_bucket).len] = Some(Entry {
@@ -573,21 +577,26 @@ where
         unsafe {
             // Update table pointer
             self.table.store(resize_state.new_table, Ordering::Release);
-            self.capacity.store(resize_state.new_capacity, Ordering::Release);
-            
+            self.capacity
+                .store(resize_state.new_capacity, Ordering::Release);
+
             // Clear resize state
-            self.resize_state.store(core::ptr::null_mut(), Ordering::Release);
-            
+            self.resize_state
+                .store(core::ptr::null_mut(), Ordering::Release);
+
             // Deallocate old table and resize state
             alloc::dealloc(
                 resize_state.old_table as *mut u8,
                 Layout::from_size_align(
                     resize_state.old_capacity * core::mem::size_of::<Bucket<K, V>>(),
                     64,
-                ).unwrap(),
+                )
+                .unwrap(),
             );
-            
-            drop(Box::from_raw(resize_state as *const ResizeState<K, V> as *mut ResizeState<K, V>));
+
+            drop(Box::from_raw(
+                resize_state as *const ResizeState<K, V> as *mut ResizeState<K, V>,
+            ));
         }
     }
 
@@ -595,10 +604,10 @@ where
         let capacity = self.capacity.load(Ordering::Relaxed);
         let bucket_index = self.bucket_index(hash, capacity);
         let table = self.table.load(Ordering::Relaxed);
-        
+
         unsafe {
             let bucket = table.add(bucket_index);
-            
+
             // Look for existing key
             for i in 0..(*bucket).len {
                 if let Some(entry) = &(*bucket).entries[i] {
@@ -615,7 +624,7 @@ where
                     }
                 }
             }
-            
+
             // Key doesn't exist, insert new entry
             if (*bucket).len < 16 {
                 (*bucket).entries[(*bucket).len] = Some(Entry {
@@ -636,10 +645,10 @@ where
     fn get_locked(&self, key: &K, hash: u64, capacity: usize) -> Option<&V> {
         let bucket_index = self.bucket_index(hash, capacity);
         let table = self.table.load(Ordering::Acquire);
-        
+
         unsafe {
             let bucket = table.add(bucket_index);
-            
+
             for i in 0..(*bucket).len {
                 if let Some(entry) = &(*bucket).entries[i] {
                     if entry.hash == hash && entry.key == *key {
@@ -648,35 +657,35 @@ where
                 }
             }
         }
-        
+
         None
     }
 
     fn remove_locked(&self, key: &K, hash: u64, capacity: usize) -> Option<V> {
         let bucket_index = self.bucket_index(hash, capacity);
         let table = self.table.load(Ordering::Relaxed);
-        
+
         unsafe {
             let bucket = table.add(bucket_index);
-            
+
             for i in 0..(*bucket).len {
                 if let Some(entry) = &(*bucket).entries[i] {
                     if entry.hash == hash && entry.key == *key {
                         // Found the entry, remove it
                         let entry = (*bucket).entries[i].take().unwrap();
-                        
+
                         // Shift remaining entries
                         for j in i..(*bucket).len - 1 {
                             (*bucket).entries[j] = (*bucket).entries[j + 1].take();
                         }
-                        
+
                         (*bucket).len -= 1;
                         return Some(entry.value);
                     }
                 }
             }
         }
-        
+
         None
     }
 }
@@ -698,7 +707,7 @@ where
 {
     fn clone(&self) -> Self {
         let new_map = Self::with_capacity(self.capacity());
-        
+
         // Copy all entries (simplified - real implementation would be more efficient)
         for bucket_index in 0..self.capacity() {
             let table = self.table.load(Ordering::Acquire);
@@ -711,7 +720,7 @@ where
                 }
             }
         }
-        
+
         new_map
     }
 }
@@ -721,7 +730,7 @@ impl<K, V> Drop for ConcurrentHashMap<K, V> {
         // Deallocate table
         let table = self.table.load(Ordering::Relaxed);
         let capacity = self.capacity.load(Ordering::Relaxed);
-        
+
         if !table.is_null() {
             unsafe {
                 // Drop all entries
@@ -731,18 +740,16 @@ impl<K, V> Drop for ConcurrentHashMap<K, V> {
                         *entry = None;
                     }
                 }
-                
+
                 // Deallocate table
                 alloc::dealloc(
                     table as *mut u8,
-                    Layout::from_size_align(
-                        capacity * core::mem::size_of::<Bucket<K, V>>(),
-                        64,
-                    ).unwrap(),
+                    Layout::from_size_align(capacity * core::mem::size_of::<Bucket<K, V>>(), 64)
+                        .unwrap(),
                 );
             }
         }
-        
+
         // Clean up resize state
         let resize_state = self.resize_state.load(Ordering::Relaxed);
         if !resize_state.is_null() {
@@ -763,15 +770,15 @@ where
         // For now, return empty metrics - can be enhanced later
         crate::metrics::PerformanceMetrics::default()
     }
-    
+
     fn reset_metrics(&self) {
         // No-op for now
     }
-    
+
     fn set_metrics_enabled(&self, _enabled: bool) {
         // No-op for now
     }
-    
+
     fn is_metrics_enabled(&self) -> bool {
         false // Disabled for now
     }
@@ -780,33 +787,36 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::format;
     use std::string::String;
     use std::string::ToString;
     use std::sync::Arc;
     use std::thread;
-    use std::format;
     use std::vec;
 
     #[test]
     #[ignore] // TODO: Fix heap corruption issue in basic operations test
     fn test_basic_operations() {
         let map: ConcurrentHashMap<i32, String> = ConcurrentHashMap::new();
-        
+
         // Test empty map
         assert_eq!(map.len(), 0);
         assert!(map.is_empty());
         assert_eq!(map.get(&1), None);
-        
+
         // Test insert and get
         assert_eq!(map.insert(1, "hello".to_string()), None);
         assert_eq!(map.len(), 1);
         assert!(!map.is_empty());
         assert_eq!(map.get(&1), Some(&"hello".to_string()));
-        
+
         // Test update
-        assert_eq!(map.insert(1, "world".to_string()), Some("hello".to_string()));
+        assert_eq!(
+            map.insert(1, "world".to_string()),
+            Some("hello".to_string())
+        );
         assert_eq!(map.get(&1), Some(&"world".to_string()));
-        
+
         // Test remove
         assert_eq!(map.remove(&1), Some("world".to_string()));
         assert_eq!(map.len(), 0);
@@ -820,7 +830,7 @@ mod tests {
         let num_writers = 4;
         let num_readers = 4;
         let items_per_writer = 1000;
-        
+
         // Spawn writer threads
         let mut writer_handles = vec![];
         for writer_id in 0..num_writers {
@@ -833,7 +843,7 @@ mod tests {
             });
             writer_handles.push(handle);
         }
-        
+
         // Spawn reader threads
         let mut reader_handles = vec![];
         for _ in 0..num_readers {
@@ -850,17 +860,17 @@ mod tests {
             });
             reader_handles.push(handle);
         }
-        
+
         // Wait for all threads
         for handle in writer_handles {
             handle.join().unwrap();
         }
-        
+
         let mut _total_reads = 0;
         for handle in reader_handles {
             _total_reads += handle.join().unwrap();
         }
-        
+
         // Verify all items are present
         for i in 0..num_writers * items_per_writer {
             assert!(map.get(&i).is_some(), "Missing key: {}", i);
@@ -872,15 +882,15 @@ mod tests {
     fn test_resize_behavior() {
         let map: ConcurrentHashMap<i32, i32> = ConcurrentHashMap::with_capacity(4);
         let initial_capacity = map.capacity();
-        
+
         // Insert items to trigger resize
         for i in 0..10 {
             map.insert(i, i * 2);
         }
-        
+
         // Should have resized
         assert!(map.capacity() > initial_capacity);
-        
+
         // Verify all items are still accessible
         for i in 0..10 {
             assert_eq!(map.get(&i), Some(&(i * 2)));
@@ -891,20 +901,20 @@ mod tests {
     #[ignore] // TODO: Fix heap corruption issue in clear test
     fn test_clear() {
         let map: ConcurrentHashMap<i32, String> = ConcurrentHashMap::new();
-        
+
         // Add some items
         for i in 0..10 {
             map.insert(i, format!("value_{}", i));
         }
-        
+
         assert_eq!(map.len(), 10);
-        
+
         // Clear the map
         map.clear();
-        
+
         assert_eq!(map.len(), 0);
         assert!(map.is_empty());
-        
+
         // Verify all items are gone
         for i in 0..10 {
             assert_eq!(map.get(&i), None);
@@ -915,23 +925,23 @@ mod tests {
     #[ignore] // TODO: Fix heap corruption issue in clone test
     fn test_clone() {
         let map1: ConcurrentHashMap<i32, String> = ConcurrentHashMap::new();
-        
+
         // Add some items
         for i in 0..10 {
             map1.insert(i, format!("value_{}", i));
         }
-        
+
         let map2 = map1.clone();
-        
+
         // Verify both maps have the same content
         assert_eq!(map1.len(), map2.len());
         for i in 0..10 {
             assert_eq!(map1.get(&i), map2.get(&i));
         }
-        
+
         // Modify original map
         map1.insert(10, "new_value".to_string());
-        
+
         // Verify clone is unaffected
         assert_eq!(map1.get(&10), Some(&"new_value".to_string()));
         assert_eq!(map2.get(&10), None);

@@ -5,6 +5,19 @@ All notable changes to VelocityX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2025-12-19
+
+### Fixed
+- Default `MpmcQueue` now uses the safe mutex-backed implementation to prevent memory corruption under contention.
+- Fixed `no_std` build by gating `std`-only modules/features and resolving duplicated `MetricsCollector` trait definitions.
+
+### Changed
+- Added `lockfree` feature (opt-in) for the experimental lock-free queue implementation.
+- CI no longer runs clippy/tests with all features enabled by default; added formatting/MSRV/no_std checks.
+
+### Security
+- Avoided a potential double-free / memory corruption path by removing the experimental lock-free MPMC queue from the default API surface.
+
 ## [0.4.0] - 2025-12-01
 
 ### 🚀 **Priority 3: COMPLETED - Lock-Free Stack Implementation**

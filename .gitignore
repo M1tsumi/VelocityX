@@ -23,6 +23,10 @@ Thumbs.db
 debug/
 target/
 
+# Binary artifacts
+*.exe
+*.pdb
+
 # Profiling
 *.profraw
 *.prof

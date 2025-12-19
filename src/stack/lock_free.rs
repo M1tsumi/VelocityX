@@ -3,8 +3,8 @@
 //! A high-performance lock-free stack based on Treiber's algorithm.
 //! Provides wait-free push operations and lock-free pop operations.
 
-use crate::util::CachePadded;
 use crate::metrics::{AtomicMetrics, MetricsCollector};
+use crate::util::CachePadded;
 use core::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::atomic::{AtomicUsize, Ordering as StdOrdering};
 
@@ -107,7 +107,7 @@ impl<T> LockFreeStack<T> {
         // Treiber's algorithm for push
         loop {
             let head = self.head.get().load(Ordering::Acquire);
-            
+
             // Set the next pointer to current head
             unsafe {
                 (*node).next.store(head, Ordering::Relaxed);
@@ -160,7 +160,7 @@ impl<T> LockFreeStack<T> {
 
         loop {
             let head = self.head.get().load(Ordering::Acquire);
-            
+
             if head.is_null() {
                 #[cfg(feature = "std")]
                 self.metrics.record_failure();
@@ -183,10 +183,10 @@ impl<T> LockFreeStack<T> {
                         let node = Box::from_raw(head);
                         node.data
                     };
-                    
+
                     #[cfg(feature = "std")]
                     self.metrics.record_success(start.elapsed());
-                    
+
                     return Some(data);
                 }
                 Err(_) => {
@@ -245,12 +245,12 @@ impl<T> LockFreeStack<T> {
     pub fn len(&self) -> usize {
         let mut count = 0;
         let mut current = self.head.get().load(Ordering::Acquire);
-        
+
         while !current.is_null() {
             count += 1;
             current = unsafe { (*current).next.load(Ordering::Relaxed) };
         }
-        
+
         count
     }
 
@@ -281,7 +281,7 @@ impl<T> LockFreeStack<T> {
     /// ```
     pub fn pop_batch(&self, max_count: usize) -> Vec<T> {
         let mut result = Vec::with_capacity(max_count);
-        
+
         for _ in 0..max_count {
             if let Some(value) = self.pop() {
                 result.push(value);
@@ -289,7 +289,7 @@ impl<T> LockFreeStack<T> {
                 break;
             }
         }
-        
+
         result
     }
 
@@ -335,7 +335,7 @@ impl<T> Drop for LockFreeStack<T> {
     fn drop(&mut self) {
         // Clean up all remaining nodes
         let mut current = self.head.get().load(Ordering::Acquire);
-        
+
         while !current.is_null() {
             let next = unsafe { (*current).next.load(Ordering::Relaxed) };
             unsafe {
@@ -351,15 +351,16 @@ impl<T> MetricsCollector for LockFreeStack<T> {
     fn metrics(&self) -> crate::metrics::PerformanceMetrics {
         self.metrics.snapshot()
     }
-    
+
     fn reset_metrics(&self) {
         self.metrics.reset();
     }
-    
+
     fn set_metrics_enabled(&self, enabled: bool) {
-        self.metrics_enabled.store(enabled as usize, StdOrdering::Relaxed);
+        self.metrics_enabled
+            .store(enabled as usize, StdOrdering::Relaxed);
     }
-    
+
     fn is_metrics_enabled(&self) -> bool {
         self.metrics_enabled.load(StdOrdering::Relaxed) != 0
     }
@@ -375,25 +376,25 @@ mod tests {
     #[test]
     fn test_basic_operations() {
         let stack = LockFreeStack::new();
-        
+
         // Test empty stack
         assert!(stack.is_empty());
         assert_eq!(stack.len(), 0);
         assert_eq!(stack.pop(), None);
-        
+
         // Test push and pop
         stack.push(1);
         stack.push(2);
         stack.push(3);
-        
+
         assert!(!stack.is_empty());
         assert_eq!(stack.len(), 3);
-        
+
         assert_eq!(stack.pop(), Some(3));
         assert_eq!(stack.pop(), Some(2));
         assert_eq!(stack.pop(), Some(1));
         assert_eq!(stack.pop(), None);
-        
+
         assert!(stack.is_empty());
         assert_eq!(stack.len(), 0);
     }
@@ -401,16 +402,16 @@ mod tests {
     #[test]
     fn test_batch_operations() {
         let stack = LockFreeStack::new();
-        
+
         // Test batch push
         stack.push_batch(vec![1, 2, 3, 4, 5]);
         assert_eq!(stack.len(), 5);
-        
+
         // Test batch pop
         let elements = stack.pop_batch(3);
         assert_eq!(elements.len(), 3);
         assert_eq!(stack.len(), 2);
-        
+
         // Verify LIFO order
         assert_eq!(stack.pop(), Some(2));
         assert_eq!(stack.pop(), Some(1));
@@ -421,7 +422,7 @@ mod tests {
     fn test_concurrent_operations() {
         let stack = Arc::new(LockFreeStack::new());
         let mut handles = vec![];
-        
+
         // Spawn multiple producer threads
         for i in 0..4 {
             let stack_clone = Arc::clone(&stack);
@@ -432,18 +433,18 @@ mod tests {
             });
             handles.push(handle);
         }
-        
+
         // Wait for all producers to finish
         for handle in handles {
             handle.join().unwrap();
         }
-        
+
         // Verify all elements are present
         let mut count = 0;
         while stack.pop().is_some() {
             count += 1;
         }
-        
+
         assert_eq!(count, 400);
         assert!(stack.is_empty());
     }
@@ -452,7 +453,7 @@ mod tests {
     fn test_producer_consumer() {
         let stack = Arc::new(LockFreeStack::new());
         let _handles: Vec<std::thread::JoinHandle<()>> = vec![];
-        
+
         // Producer thread
         let producer_stack = Arc::clone(&stack);
         let producer = thread::spawn(move || {
@@ -460,7 +461,7 @@ mod tests {
                 producer_stack.push(i);
             }
         });
-        
+
         // Consumer thread
         let consumer_stack = Arc::clone(&stack);
         let consumer = thread::spawn(move || {
@@ -476,10 +477,10 @@ mod tests {
             }
             sum
         });
-        
+
         producer.join().unwrap();
         let result = consumer.join().unwrap();
-        
+
         // Sum of 0..999 = 499500
         assert_eq!(result, 499500);
     }
@@ -488,28 +489,28 @@ mod tests {
     #[test]
     fn test_metrics() {
         let stack = LockFreeStack::new();
-        
+
         // Perform some operations
         stack.push(1);
         stack.push(2);
         stack.push(3);
-        
+
         let _ = stack.pop();
         let _ = stack.pop();
         let _ = stack.pop();
         let _ = stack.pop(); // This will fail
-        
+
         // Check metrics
         let metrics = stack.metrics();
         assert_eq!(metrics.total_operations, 7);
         assert_eq!(metrics.successful_operations, 6);
         assert_eq!(metrics.failed_operations, 1);
         assert!(metrics.success_rate() > 80.0);
-        
+
         // Test metrics control
         stack.set_metrics_enabled(false);
         assert!(!stack.is_metrics_enabled());
-        
+
         stack.reset_metrics();
         let reset_metrics = stack.metrics();
         assert_eq!(reset_metrics.total_operations, 0);

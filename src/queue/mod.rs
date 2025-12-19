@@ -31,8 +31,13 @@
 //! # Ok::<(), velocityx::Error>(())
 //! ```
 
-// pub mod mpmc;  // Disabled due to compilation issues
 pub mod mpmc_simple;
+
+#[cfg(feature = "lockfree")]
+pub mod mpmc;
 
 // Re-export the main queue types
 pub use mpmc_simple::{MpmcQueue, QueueMetrics};
+
+#[cfg(feature = "lockfree")]
+pub use mpmc::MpmcQueue as LockFreeMpmcQueue;

@@ -73,11 +73,11 @@ use crate::util::CachePadded;
 use crate::{Error, Result};
 use core::sync::atomic::{AtomicIsize, AtomicUsize, Ordering};
 
+use crate::metrics::MetricsCollector;
 #[cfg(feature = "std")]
 use std::boxed::Box;
 #[cfg(feature = "std")]
 use std::vec::Vec;
-use crate::metrics::MetricsCollector;
 
 /// A work-stealing deque based on the Chase-Lev algorithm
 ///
@@ -99,7 +99,7 @@ use crate::metrics::MetricsCollector;
 /// use velocityx::deque::WorkStealingDeque;
 ///
 /// let mut deque: WorkStealingDeque<i32> = WorkStealingDeque::new(10);
-/// 
+///
 /// // Owner operations
 /// deque.push(42);
 /// assert_eq!(deque.pop(), Some(42));
@@ -112,19 +112,19 @@ use crate::metrics::MetricsCollector;
 pub struct WorkStealingDeque<T> {
     // Circular buffer storage, aligned to cache line boundaries
     buffer: CachePadded<Box<[Option<T>]>>,
-    
+
     // Deque capacity (always a power of 2)
     capacity: usize,
-    
+
     // Mask for fast modulo operation (capacity - 1)
     mask: usize,
-    
+
     // Bottom index (next free slot, owner only)
     bottom: CachePadded<AtomicIsize>,
-    
+
     // Top index (first available element, shared)
     top: CachePadded<AtomicIsize>,
-    
+
     // For ABA problem prevention
     #[allow(dead_code)]
     epoch: CachePadded<AtomicUsize>,
@@ -134,13 +134,13 @@ impl<T> Clone for WorkStealingDeque<T> {
     fn clone(&self) -> Self {
         // Create a new deque with the same capacity
         let mut new_deque = WorkStealingDeque::<T>::with_capacity(self.capacity);
-        
+
         // Note: This is a shallow clone - it doesn't copy the elements
         // For a true clone, you'd need to drain the original deque
         // and push elements into the new one
         new_deque.capacity = self.capacity;
         new_deque.mask = self.mask;
-        
+
         new_deque
     }
 }
@@ -178,21 +178,21 @@ impl<T> WorkStealingDeque<T> {
     /// * `capacity` - Maximum number of elements the deque can hold
     fn with_capacity(capacity: usize) -> Self {
         assert!(capacity > 0, "Deque capacity must be greater than 0");
-        
+
         // Round up to next power of 2 for efficient modulo operations
         let capacity = if capacity.is_power_of_two() {
             capacity
         } else {
             capacity.next_power_of_two()
         };
-        
+
         let mask = capacity - 1;
-        
+
         // Allocate aligned buffer
         let mut buffer = Vec::with_capacity(capacity);
         buffer.resize_with(capacity, || None);
         let buffer = buffer.into_boxed_slice();
-        
+
         Self {
             buffer: CachePadded::new(buffer),
             capacity,
@@ -234,20 +234,20 @@ impl<T> WorkStealingDeque<T> {
     pub fn push(&mut self, value: T) -> Result<()> {
         let bottom = self.bottom.get().load(Ordering::Relaxed);
         let top = self.top.get().load(Ordering::Acquire);
-        
+
         // Check if deque is full
         if bottom - top >= self.capacity as isize {
             return Err(Error::WouldBlock);
         }
-        
+
         let index = (bottom as usize) & self.mask;
-        
+
         // Write the value
         self.buffer.inner_mut()[index] = Some(value);
-        
+
         // Update bottom index with Release ordering
         self.bottom.get().store(bottom + 1, Ordering::Release);
-        
+
         Ok(())
     }
 
@@ -278,29 +278,29 @@ impl<T> WorkStealingDeque<T> {
     #[inline]
     pub fn pop(&mut self) -> Option<T> {
         let bottom = self.bottom.get().load(Ordering::Relaxed);
-        
+
         if bottom == 0 {
             return None;
         }
-        
+
         // Decrement bottom first
         self.bottom.get().store(bottom - 1, Ordering::Relaxed);
-        
+
         let top = self.top.get().load(Ordering::Acquire);
-        
+
         if top < bottom {
             // Deque is not empty, take the element
             let index = ((bottom - 1) as usize) & self.mask;
             let value = self.buffer.inner_mut()[index].take();
-            
+
             if top == bottom - 1 {
                 // Deque became empty, try to update top
-                if self.top.get().compare_exchange(
-                    top,
-                    top + 1,
-                    Ordering::Release,
-                    Ordering::Relaxed,
-                ).is_ok() {
+                if self
+                    .top
+                    .get()
+                    .compare_exchange(top, top + 1, Ordering::Release, Ordering::Relaxed)
+                    .is_ok()
+                {
                     // Successfully updated top, return value
                     self.bottom.get().store(bottom, Ordering::Relaxed);
                     return value;
@@ -310,7 +310,7 @@ impl<T> WorkStealingDeque<T> {
                     return None;
                 }
             }
-            
+
             value
         } else {
             // Deque is empty, restore bottom
@@ -342,27 +342,27 @@ impl<T> WorkStealingDeque<T> {
     /// deque.push(42).unwrap();
     /// assert_eq!(deque.steal(), Some(42));
     /// assert_eq!(deque.steal(), None); // Deque is empty
-    /// ``` 
+    /// ```
     #[inline]
     pub fn steal(&mut self) -> Option<T> {
         let top = self.top.get().load(Ordering::Acquire);
         let bottom = self.bottom.get().load(Ordering::Acquire);
-        
+
         if top >= bottom {
             return None;
         }
-        
+
         let index = (top as usize) & self.mask;
-        
+
         // Try to take the element
         if let Some(value) = self.buffer.inner_mut()[index].take() {
             // Try to update top
-            if self.top.get().compare_exchange(
-                top,
-                top + 1,
-                Ordering::Release,
-                Ordering::Relaxed,
-            ).is_ok() {
+            if self
+                .top
+                .get()
+                .compare_exchange(top, top + 1, Ordering::Release, Ordering::Relaxed)
+                .is_ok()
+            {
                 // Successfully stole the element
                 Some(value)
             } else {
@@ -419,7 +419,7 @@ impl<T> WorkStealingDeque<T> {
     /// assert!(deque.is_empty());
     /// deque.push(42).unwrap();
     /// assert!(!deque.is_empty());
-    /// ``` 
+    /// ```
     #[inline]
     pub fn is_empty(&self) -> bool {
         let bottom = self.bottom.get().load(Ordering::Acquire);
@@ -496,15 +496,15 @@ impl<T> MetricsCollector for WorkStealingDeque<T> {
         // For now, return empty metrics - can be enhanced later
         crate::metrics::PerformanceMetrics::default()
     }
-    
+
     fn reset_metrics(&self) {
         // No-op for now
     }
-    
+
     fn set_metrics_enabled(&self, _enabled: bool) {
         // No-op for now
     }
-    
+
     fn is_metrics_enabled(&self) -> bool {
         false // Disabled for now
     }
@@ -518,18 +518,18 @@ mod tests {
     #[test]
     fn test_basic_operations() {
         let mut deque: WorkStealingDeque<i32> = WorkStealingDeque::new(4);
-        
+
         // Test empty deque
         assert_eq!(deque.len(), 0);
         assert!(deque.is_empty());
         assert_eq!(deque.pop(), None);
         assert_eq!(deque.steal(), None);
-        
+
         // Test push and pop
         assert!(deque.push(1).is_ok());
         assert_eq!(deque.len(), 1);
         assert!(!deque.is_empty());
-        
+
         assert_eq!(deque.pop(), Some(1));
         assert_eq!(deque.len(), 0);
         assert!(deque.is_empty());
@@ -538,12 +538,12 @@ mod tests {
     #[test]
     fn test_lifo_behavior() {
         let mut deque: WorkStealingDeque<i32> = WorkStealingDeque::new(4);
-        
+
         // Push multiple items
         assert!(deque.push(1).is_ok());
         assert!(deque.push(2).is_ok());
         assert!(deque.push(3).is_ok());
-        
+
         // Pop should return items in LIFO order
         assert_eq!(deque.pop(), Some(3));
         assert_eq!(deque.pop(), Some(2));
@@ -554,12 +554,12 @@ mod tests {
     #[test]
     fn test_fifo_stealing() {
         let mut deque: WorkStealingDeque<i32> = WorkStealingDeque::new(4);
-        
+
         // Push multiple items
         assert!(deque.push(1).is_ok());
         assert!(deque.push(2).is_ok());
         assert!(deque.push(3).is_ok());
-        
+
         // Steal should return items in FIFO order
         assert_eq!(deque.steal(), Some(1));
         assert_eq!(deque.steal(), Some(2));
@@ -570,12 +570,12 @@ mod tests {
     #[test]
     fn test_mixed_operations() {
         let mut deque: WorkStealingDeque<i32> = WorkStealingDeque::new(4);
-        
+
         // Push items
         assert!(deque.push(1).is_ok());
         assert!(deque.push(2).is_ok());
         assert!(deque.push(3).is_ok());
-        
+
         // Mix of pop and steal
         assert_eq!(deque.pop(), Some(3)); // LIFO from bottom
         assert_eq!(deque.steal(), Some(1)); // FIFO from top
@@ -587,15 +587,15 @@ mod tests {
     #[test]
     fn test_full_deque() {
         let mut deque: WorkStealingDeque<i32> = WorkStealingDeque::new(2);
-        
+
         // Fill the deque
         assert!(deque.push(1).is_ok());
         assert!(deque.push(2).is_ok());
         assert_eq!(deque.len(), 2);
-        
+
         // Try to push into full deque
         assert!(deque.push(3).is_err());
-        
+
         // Pop one item and try again
         assert_eq!(deque.pop(), Some(2));
         assert!(deque.push(3).is_ok());
@@ -606,7 +606,7 @@ mod tests {
     #[test]
     fn test_wrap_around() {
         let mut deque: WorkStealingDeque<i32> = WorkStealingDeque::new(4);
-        
+
         // Fill and empty the deque multiple times to test wrap-around
         for i in 0..10 {
             assert!(deque.push(i).is_ok());
@@ -622,7 +622,7 @@ mod tests {
     //     let num_workers = 4;
     //     let num_thieves = 4;
     //     let tasks_per_worker = 1000;
-    //     
+    //
     //     // Spawn worker threads (owners)
     //     let mut worker_handles = vec![];
     //     for worker_id in 0..num_workers {
@@ -635,7 +635,7 @@ mod tests {
     //                     thread::yield_now();
     //                 }
     //             }
-    //             
+    //
     //             // Process own work and steal from others
     //             let mut processed = 0;
     //             while processed < tasks_per_worker {
@@ -654,7 +654,7 @@ mod tests {
     //         });
     //         worker_handles.push(handle);
     //     }
-    //     
+    //
     //     // Spawn thief threads
     //     let mut thief_handles = vec![];
     //     for _ in 0..num_thieves {
@@ -672,18 +672,18 @@ mod tests {
     //         });
     //         thief_handles.push(handle);
     //     }
-    //     
+    //
     //     // Wait for all threads
     //     let mut total_processed = 0;
     //     for handle in worker_handles {
     //         total_processed += handle.join().unwrap();
     //     }
-    //     
+    //
     //     let mut total_stolen = 0;
     //     for handle in thief_handles {
     //         total_stolen += handle.join().unwrap();
     //     }
-    //     
+    //
     //     let total_tasks = num_workers * tasks_per_worker;
     //     assert_eq!(total_processed + total_stolen, total_tasks);
     // }
@@ -695,22 +695,22 @@ mod tests {
     //     let deque = Arc::new(WorkStealingDeque::new(100));
     //     let num_threads = 8;
     //     let operations_per_thread = 1000;
-    //     
+    //
     //     let mut handles = vec![];
-    //     
+    //
     //     // Spawn threads that perform mixed operations
     //     for thread_id in 0..num_threads {
     //         let deque = Arc::clone(&deque);
     //         let handle = thread::spawn(move || {
     //             for i in 0..operations_per_thread {
     //                 let value = thread_id * operations_per_thread + i;
-    //                 
+    //
     //                 // Try to push
     //                 if deque.push(value).is_err() {
     //                     // Deque full, try to pop or steal
     //                     let _ = deque.pop().or_else(|| deque.steal());
     //                 }
-    //                 
+    //
     //                 // Try to pop or steal
     //                 if deque.pop().is_none() && deque.steal().is_none() {
     //                     // Deque empty, try to push
@@ -720,18 +720,18 @@ mod tests {
     //         });
     //         handles.push(handle);
     //     }
-    //     
+    //
     //     // Wait for all threads
     //     for handle in handles {
     //         handle.join().unwrap();
     //     }
-    //     
+    //
     //     // Drain any remaining items
     //     let mut remaining = 0;
     //     while deque.pop().is_some() || deque.steal().is_some() {
     //         remaining += 1;
     //     }
-    //     
+    //
     //     // The exact number remaining depends on the contention pattern
     //     assert!(remaining <= deque.capacity());
     // }
@@ -739,7 +739,7 @@ mod tests {
     #[test]
     fn test_cache_alignment() {
         use core::mem;
-        
+
         // Ensure that critical fields are properly aligned
         assert_eq!(mem::align_of::<WorkStealingDeque<i32>>(), 64);
     }

@@ -2,8 +2,8 @@
 //!
 //! A basic multi-producer, multi-consumer queue implementation.
 
-use crate::util::CachePadded;
 use crate::metrics::{AtomicMetrics, MetricsCollector};
+use crate::util::CachePadded;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::vec::Vec;
@@ -45,7 +45,7 @@ impl<T> MpmcQueue<T> {
     pub fn push(&self, value: T) -> Result<(), crate::Error> {
         #[cfg(feature = "std")]
         let start = std::time::Instant::now();
-        
+
         let _guard = self.push_lock.lock().unwrap();
 
         let tail = self.tail.get().load(Ordering::Relaxed);
@@ -66,7 +66,7 @@ impl<T> MpmcQueue<T> {
 
         #[cfg(feature = "std")]
         self.metrics.record_success(start.elapsed());
-        
+
         Ok(())
     }
 
@@ -74,7 +74,7 @@ impl<T> MpmcQueue<T> {
     pub fn pop(&self) -> Option<T> {
         #[cfg(feature = "std")]
         let start = std::time::Instant::now();
-        
+
         let _guard = self.pop_lock.lock().unwrap();
 
         let head = self.head.get().load(Ordering::Relaxed);
@@ -151,17 +151,17 @@ impl<T> MpmcQueue<T> {
     /// let pushed = queue.push_batch(values);
     /// assert_eq!(pushed, 5);
     /// ```
-    pub fn push_batch<I>(&self, values: I) -> usize 
-    where 
+    pub fn push_batch<I>(&self, values: I) -> usize
+    where
         I: IntoIterator<Item = T>,
     {
         let _guard = self.push_lock.lock().unwrap();
         let mut pushed = 0;
-        
+
         let tail = self.tail.get().load(Ordering::Relaxed);
         let head = self.head.get().load(Ordering::Relaxed);
         let available_space = self.capacity - (tail - head);
-        
+
         for value in values.into_iter().take(available_space) {
             let index = (tail + pushed) % self.capacity;
             {
@@ -170,7 +170,7 @@ impl<T> MpmcQueue<T> {
             }
             pushed += 1;
         }
-        
+
         self.tail.get().store(tail + pushed, Ordering::Release);
         pushed
     }
@@ -204,12 +204,12 @@ impl<T> MpmcQueue<T> {
         let _guard = self.pop_lock.lock().unwrap();
         let head = self.head.get().load(Ordering::Relaxed);
         let tail = self.tail.get().load(Ordering::Relaxed);
-        
+
         let available_items = tail - head;
         let items_to_pop = std::cmp::min(max_values, available_items);
-        
+
         let mut values = Vec::with_capacity(items_to_pop);
-        
+
         for i in 0..items_to_pop {
             let index = (head + i) % self.capacity;
             {
@@ -219,8 +219,10 @@ impl<T> MpmcQueue<T> {
                 }
             }
         }
-        
-        self.head.get().store(head + items_to_pop, Ordering::Release);
+
+        self.head
+            .get()
+            .store(head + items_to_pop, Ordering::Release);
         values
     }
 
@@ -252,13 +254,17 @@ impl<T> MpmcQueue<T> {
     /// assert!(result.is_err()); // Queue full, timeout
     /// ```
     #[cfg(feature = "std")]
-    pub fn push_with_timeout<F>(&self, timeout: Duration, mut value_factory: F) -> Result<(), crate::Error>
+    pub fn push_with_timeout<F>(
+        &self,
+        timeout: Duration,
+        mut value_factory: F,
+    ) -> Result<(), crate::Error>
     where
         F: FnMut() -> T,
     {
         let start = std::time::Instant::now();
         let mut backoff = Duration::from_nanos(100);
-        
+
         while start.elapsed() < timeout {
             match self.push(value_factory()) {
                 Ok(()) => return Ok(()),
@@ -275,7 +281,7 @@ impl<T> MpmcQueue<T> {
                 Err(e) => return Err(e),
             }
         }
-        
+
         Err(crate::Error::Timeout)
     }
 
@@ -308,12 +314,12 @@ impl<T> MpmcQueue<T> {
     pub fn pop_with_timeout(&self, timeout: Duration) -> Option<T> {
         let start = std::time::Instant::now();
         let mut backoff = Duration::from_nanos(50);
-        
+
         while start.elapsed() < timeout {
             if let Some(value) = self.pop() {
                 return Some(value);
             }
-            
+
             // Adaptive backoff with exponential growth
             let elapsed = start.elapsed();
             let remaining = timeout - elapsed;
@@ -323,7 +329,7 @@ impl<T> MpmcQueue<T> {
             std::thread::sleep(backoff);
             backoff = std::cmp::min(backoff * 2, Duration::from_millis(1));
         }
-        
+
         None
     }
 }
@@ -372,17 +378,20 @@ impl<T> MetricsCollector for MpmcQueue<T> {
     fn metrics(&self) -> crate::metrics::PerformanceMetrics {
         self.metrics.snapshot()
     }
-    
+
     fn reset_metrics(&self) {
         self.metrics.reset();
     }
-    
+
     fn set_metrics_enabled(&self, enabled: bool) {
-        self.metrics_enabled.store(enabled as usize, std::sync::atomic::Ordering::Relaxed);
+        self.metrics_enabled
+            .store(enabled as usize, std::sync::atomic::Ordering::Relaxed);
     }
-    
+
     fn is_metrics_enabled(&self) -> bool {
-        self.metrics_enabled.load(std::sync::atomic::Ordering::Relaxed) != 0
+        self.metrics_enabled
+            .load(std::sync::atomic::Ordering::Relaxed)
+            != 0
     }
 }
 

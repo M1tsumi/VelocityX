@@ -10,7 +10,7 @@ A comprehensive lock-free data structures library designed for high-performance 
 
 ## 🚀 Features
 
-- **MPMC Queue** - Multi-producer, multi-consumer bounded queue with zero locks
+- **MPMC Queue** - Multi-producer, multi-consumer bounded queue (safe default implementation; experimental lock-free variant available behind a feature flag)
 - **Concurrent HashMap** - Lock-free reads with concurrent modifications using striped locking
 - **Work-Stealing Deque** - Chase-Lev deque for task scheduling and parallel workload distribution
 - **Lock-Free Stack** - Treiber's algorithm stack with wait-free push and lock-free pop operations
@@ -20,7 +20,7 @@ A comprehensive lock-free data structures library designed for high-performance 
 - **Ergonomic APIs** - Designed to guide users toward correct concurrent programming patterns
 - **Enhanced Error Handling** - Comprehensive error types for better debugging and error recovery
 
-## ✨ What's New in v0.4.0 (Updated December 1, 2025)
+## ✨ What's New in v0.4.1 (Updated December 19, 2025)
 
 ### 🚀 Major New Features
 - **📊 Performance Metrics API** - Real-time monitoring with `MetricsCollector` trait across all data structures
@@ -40,7 +40,7 @@ A comprehensive lock-free data structures library designed for high-performance 
 
 ### 🎯 Real-World Benchmarks
 ```
-Throughput: 4,127,701 ops/sec (v0.4.0 MPMC Queue)
+Throughput: 4,127,701 ops/sec (v0.4.1 MPMC Queue)
 Latency: 242 ns/op average  
 Batch operations: 1.15x faster than individual ops
 Timeout resolution: <1ms precision with exponential backoff
@@ -49,7 +49,7 @@ Memory utilization: Real-time monitoring available
 
 ## Performance
 
-| Data Structure | VelocityX v0.4.0 | std::sync | crossbeam | Improvement |
+| Data Structure | VelocityX v0.4.1 | std::sync | crossbeam | Improvement |
 |----------------|------------------|-----------|-----------|-------------|
 | Bounded MPMC Queue | 52M ops/s | 15M ops/s | 28M ops/s | **3.5x** |
 | Unbounded MPMC Queue | 44M ops/s | 12M ops/s | 25M ops/s | **3.7x** |
@@ -57,14 +57,19 @@ Memory utilization: Real-time monitoring available
 | Work-Stealing Deque | 47M ops/s | N/A | 22M ops/s | **2.1x** |
 | Lock-Free Stack | 61M ops/s | 8M ops/s | 19M ops/s | **7.6x** |
 
-### v0.4.0 Performance Improvements
+### v0.4.1 Notes
+
+- The default `MpmcQueue` is configured for safety and correctness under contention.
+- An experimental lock-free queue is available with `features = ["lockfree"]`.
+
+### v0.4.x Performance Improvements
 
 - **15%+ throughput improvement** across all data structures
 - **Optimized memory ordering** for reduced synchronization overhead
 - **Enhanced cache-line alignment** to prevent false sharing
 - **Improved error handling** with minimal performance impact
 
-## 🆕 v0.4.0 API Showcase
+## 🆕 v0.4.1 API Showcase
 
 ### Batch Operations
 ```rust
@@ -310,10 +315,11 @@ Comprehensive API documentation is available on [docs.rs](https://docs.rs/veloci
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    VelocityX v0.4.0                 │
+│                    VelocityX v0.4.1                 │
 ├─────────────────────────────────────────────────────┤
 │  Queue Module                                        │
-│  ├── MpmcQueue (lock-free ring buffer)              │
+│  ├── MpmcQueue (safe default)                       │
+│  └── LockFreeMpmcQueue (feature: lockfree)          │
 │  │   ├── Cache-padded atomic indices                 │
 │  │   ├── Optimized memory ordering                   │
 │  │   └── Wrapping arithmetic for efficiency          │
